@@ -81,32 +81,39 @@ mod output {
 
 mod args {
     use folio::infrastructure::Args;
-    use std::process::Command;
 
+    // Args::create() is a one-liner (Self::parse()) — its behaviour is entirely
+    // clap's. There is no meaningful narrow test beyond verifying that create_null
+    // parses the same way, which exercises the same parse_from path.
     #[test]
     fn null_parses_check_subcommand() {
         let args = Args::create_null(["folio", "check", "ledger.folio"]);
         assert!(
             matches!(args.command, folio::infrastructure::Command::Check { ref path } if path == "ledger.folio"),
-
             "expected Check subcommand with correct path",
         );
     }
+}
+
+// ── End-to-end ────────────────────────────────────────────────────────────────
+
+mod e2e {
+    use std::process::Command;
 
     #[test]
-    fn real_check_subcommand_exits_nonzero_for_missing_file() {
+    fn check_exits_nonzero_for_missing_file() {
         let status = Command::new(env!("CARGO_BIN_EXE_folio"))
             .args(["check", "no-such-file.folio"])
             .status()
             .expect("failed to run folio binary");
-        assert!(!status.success(), "expected non-zero exit for missing file");
+        assert!(!status.success());
     }
 
     #[test]
-    fn real_no_args_exits_nonzero() {
+    fn no_subcommand_exits_nonzero() {
         let status = Command::new(env!("CARGO_BIN_EXE_folio"))
             .status()
             .expect("failed to run folio binary");
-        assert!(!status.success(), "expected non-zero exit with no subcommand");
+        assert!(!status.success());
     }
 }
