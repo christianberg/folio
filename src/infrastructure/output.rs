@@ -1,13 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-pub struct Output(Inner);
-
-enum Inner {
-    Real,
-    Null {
-        stdout: Arc<Mutex<Vec<String>>>,
-        stderr: Arc<Mutex<Vec<String>>>,
-    },
+pub struct Output {
+    stdout: Arc<Mutex<Vec<String>>>,
+    stderr: Arc<Mutex<Vec<String>>>,
+    real: bool,
 }
 
 pub struct OutputTracker(Arc<Mutex<Vec<String>>>);
@@ -20,41 +16,40 @@ impl OutputTracker {
 
 impl Output {
     pub fn create() -> Self {
-        Self(Inner::Real)
+        Self {
+            stdout: Arc::new(Mutex::new(Vec::new())),
+            stderr: Arc::new(Mutex::new(Vec::new())),
+            real: true,
+        }
     }
 
     pub fn create_null() -> Self {
-        Self(Inner::Null {
+        Self {
             stdout: Arc::new(Mutex::new(Vec::new())),
             stderr: Arc::new(Mutex::new(Vec::new())),
-        })
+            real: false,
+        }
     }
 
     pub fn println(&self, msg: &str) {
-        match &self.0 {
-            Inner::Real => println!("{msg}"),
-            Inner::Null { stdout, .. } => stdout.lock().unwrap().push(msg.to_string()),
+        self.stdout.lock().unwrap().push(msg.to_string());
+        if self.real {
+            println!("{msg}");
         }
     }
 
     pub fn eprintln(&self, msg: &str) {
-        match &self.0 {
-            Inner::Real => eprintln!("{msg}"),
-            Inner::Null { stderr, .. } => stderr.lock().unwrap().push(msg.to_string()),
+        self.stderr.lock().unwrap().push(msg.to_string());
+        if self.real {
+            eprintln!("{msg}");
         }
     }
 
     pub fn track_stdout(&self) -> OutputTracker {
-        match &self.0 {
-            Inner::Null { stdout, .. } => OutputTracker(Arc::clone(stdout)),
-            Inner::Real => panic!("track_stdout called on real Output"),
-        }
+        OutputTracker(Arc::clone(&self.stdout))
     }
 
     pub fn track_stderr(&self) -> OutputTracker {
-        match &self.0 {
-            Inner::Null { stderr, .. } => OutputTracker(Arc::clone(stderr)),
-            Inner::Real => panic!("track_stderr called on real Output"),
-        }
+        OutputTracker(Arc::clone(&self.stderr))
     }
 }

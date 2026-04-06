@@ -1,5 +1,5 @@
 use folio::commands::check;
-use folio::infrastructure::{Filesystem, Output};
+use folio::infrastructure::{Args, Filesystem, Output};
 
 const VALID: &str = "\
 2026-04-03
@@ -49,6 +49,17 @@ fn prints_error_to_stderr_for_invalid_file() {
     let r = run("ledger.folio", INVALID);
     assert!(!r.stderr.is_empty(), "expected error on stderr");
     assert!(r.stdout.is_empty(), "expected no stdout on failure");
+}
+
+#[test]
+fn dispatches_check_subcommand_via_args() {
+    let fs = Filesystem::create_null([("ledger.folio", VALID)]);
+    let output = Output::create_null();
+    let stdout = output.track_stdout();
+    let args = Args::create_null(["folio", "check", "ledger.folio"]);
+    let code = folio::run(args, &fs, &output);
+    assert_eq!(code, 0);
+    assert!(stdout.all().iter().any(|l| l.contains("ok")));
 }
 
 #[test]
