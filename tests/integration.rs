@@ -59,4 +59,35 @@ mod output {
         output.eprintln("oops");
         assert_eq!(tracker.all(), vec!["oops"]);
     }
+
+    #[test]
+    fn stops_accumulating_when_tracker_is_dropped() {
+        let output = Output::create_null();
+        {
+            let tracker = output.track_stdout();
+            output.println("captured");
+            assert_eq!(tracker.all(), vec!["captured"]);
+        } // tracker dropped here
+        output.println("not captured");
+        // No way to observe the Vec now — the point is it was not allocated.
+        // Re-track to confirm the slot is fresh.
+        let tracker2 = output.track_stdout();
+        output.println("fresh");
+        assert_eq!(tracker2.all(), vec!["fresh"]);
+    }
+}
+
+// ── Args ──────────────────────────────────────────────────────────────────────
+
+mod args {
+    use folio::infrastructure::{Args, Command};
+
+    #[test]
+    fn parses_check_subcommand() {
+        let args = Args::create_null(["folio", "check", "ledger.folio"]);
+        assert!(
+            matches!(args.command, Command::Check { ref path } if path == "ledger.folio"),
+            "expected Check subcommand with correct path",
+        );
+    }
 }

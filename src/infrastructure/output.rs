@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 pub struct Output {
-    stdout: Arc<Mutex<Vec<String>>>,
-    stderr: Arc<Mutex<Vec<String>>>,
+    stdout: Mutex<Option<Weak<Mutex<Vec<String>>>>>,
+    stderr: Mutex<Option<Weak<Mutex<Vec<String>>>>>,
     real: bool,
 }
 
@@ -17,39 +17,47 @@ impl OutputTracker {
 impl Output {
     pub fn create() -> Self {
         Self {
-            stdout: Arc::new(Mutex::new(Vec::new())),
-            stderr: Arc::new(Mutex::new(Vec::new())),
+            stdout: Mutex::new(None),
+            stderr: Mutex::new(None),
             real: true,
         }
     }
 
     pub fn create_null() -> Self {
         Self {
-            stdout: Arc::new(Mutex::new(Vec::new())),
-            stderr: Arc::new(Mutex::new(Vec::new())),
+            stdout: Mutex::new(None),
+            stderr: Mutex::new(None),
             real: false,
         }
     }
 
     pub fn println(&self, msg: &str) {
-        self.stdout.lock().unwrap().push(msg.to_string());
+        if let Some(arc) = self.stdout.lock().unwrap().as_ref().and_then(Weak::upgrade) {
+            arc.lock().unwrap().push(msg.to_string());
+        }
         if self.real {
             println!("{msg}");
         }
     }
 
     pub fn eprintln(&self, msg: &str) {
-        self.stderr.lock().unwrap().push(msg.to_string());
+        if let Some(arc) = self.stderr.lock().unwrap().as_ref().and_then(Weak::upgrade) {
+            arc.lock().unwrap().push(msg.to_string());
+        }
         if self.real {
             eprintln!("{msg}");
         }
     }
 
     pub fn track_stdout(&self) -> OutputTracker {
-        OutputTracker(Arc::clone(&self.stdout))
+        let arc = Arc::new(Mutex::new(Vec::new()));
+        *self.stdout.lock().unwrap() = Some(Arc::downgrade(&arc));
+        OutputTracker(arc)
     }
 
     pub fn track_stderr(&self) -> OutputTracker {
-        OutputTracker(Arc::clone(&self.stderr))
+        let arc = Arc::new(Mutex::new(Vec::new()));
+        *self.stderr.lock().unwrap() = Some(Arc::downgrade(&arc));
+        OutputTracker(arc)
     }
 }
