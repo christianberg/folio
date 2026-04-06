@@ -137,6 +137,61 @@ fn rejects_unbalanced_transaction_with_multiple_postings() {
 }
 
 #[test]
+fn parses_multiple_transactions() {
+    let input = "\
+2026-04-01
+    salary type:income   +3000.00
+    checking type:asset  -3000.00
+
+2026-04-03
+    food type:expense    +45.00
+    checking type:asset  -45.00
+";
+
+    let ledger = parse(input).expect("should parse without error");
+    assert_eq!(ledger.transactions.len(), 2);
+    assert_eq!(ledger.transactions[0].date.to_string(), "2026-04-01");
+    assert_eq!(ledger.transactions[1].date.to_string(), "2026-04-03");
+}
+
+#[test]
+fn parses_unsigned_positive_amount() {
+    let input = "\
+2026-04-03
+    food type:expense    45.00
+    checking type:asset  -45.00
+";
+
+    let ledger = parse(input).expect("should parse without error");
+    let expense = &ledger.transactions[0].postings[0];
+    assert_eq!(expense.amount.to_string(), "45.00");
+}
+
+#[test]
+fn ignores_comments_and_blank_lines() {
+    let input = "\
+# this is a comment
+
+2026-04-03
+    # inline comment not supported but blank lines are fine
+    food type:expense    45.00
+    checking type:asset  -45.00
+
+# trailing comment
+";
+
+    let ledger = parse(input).expect("should parse without error");
+    assert_eq!(ledger.transactions.len(), 1);
+    assert_eq!(ledger.transactions[0].postings.len(), 2);
+}
+
+#[test]
+fn parses_empty_input() {
+    let ledger = parse("").expect("should parse empty input without error");
+    assert_eq!(ledger.transactions.len(), 0);
+}
+
+#[test]
 fn rejects_posting_with_invalid_type_value() {
     let input = "\
 2026-04-03

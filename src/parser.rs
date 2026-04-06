@@ -23,7 +23,7 @@ pub fn parse(input: &str) -> Result<Ledger, ParseError> {
             while let Some(posting_line) = lines.peek() {
                 if posting_line.starts_with(' ') || posting_line.starts_with('\t') {
                     let posting_trimmed = posting_line.trim();
-                    if !posting_trimmed.is_empty() {
+                    if !posting_trimmed.is_empty() && !posting_trimmed.starts_with('#') {
                         postings.push(parse_posting(posting_trimmed)?);
                     }
                     lines.next();
