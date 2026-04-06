@@ -106,6 +106,58 @@ mod output {
     }
 }
 
+// ── Prompt ────────────────────────────────────────────────────────────────────
+
+mod prompt {
+    use folio::infrastructure::Prompt;
+
+    // Prompt::create() wraps inquire which requires a TTY — too thin to narrow-test.
+    // The null instance behaviour is fully exercised here.
+
+    #[test]
+    fn null_text_with_default_returns_provided_answer() {
+        let p = Prompt::create_null(["hello"]);
+        assert_eq!(p.text_with_default("Q", "default"), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_default_uses_default_on_empty_answer() {
+        let p = Prompt::create_null([""]);
+        assert_eq!(p.text_with_default("Q", "fallback"), Some("fallback".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_completions_returns_provided_answer() {
+        let p = Prompt::create_null(["type:expense"]);
+        let opts = vec!["type:expense".to_string(), "type:asset".to_string()];
+        assert_eq!(p.text_with_completions("Tag", &opts), Some("type:expense".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_completions_returns_none_when_queue_empty() {
+        let p = Prompt::create_null::<[&str; 0]>([]);
+        assert_eq!(p.text_with_completions("Tag", &[]), None);
+    }
+
+    #[test]
+    fn null_confirm_parses_y_as_true() {
+        let p = Prompt::create_null(["y"]);
+        assert_eq!(p.confirm("Continue?", false), Some(true));
+    }
+
+    #[test]
+    fn null_confirm_parses_n_as_false() {
+        let p = Prompt::create_null(["n"]);
+        assert_eq!(p.confirm("Continue?", true), Some(false));
+    }
+
+    #[test]
+    fn null_confirm_returns_none_when_queue_empty() {
+        let p = Prompt::create_null::<[&str; 0]>([]);
+        assert_eq!(p.confirm("Continue?", false), None);
+    }
+}
+
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 mod args {
