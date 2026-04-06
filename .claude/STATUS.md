@@ -6,23 +6,26 @@
 
 ### PR #1 — CLAUDE.md (merged)
 - Added project-wide testing conventions based on James Shore's Testing Without Mocks, adapted for Rust
-- Documents Nullable infrastructure wrappers, Output Tracking, Signature Shielding patterns
-- Forbids `mockall`/`mockito` in logic tests
 
 ### PR #2 — Milestone 1: parser and validation (merged)
 - Cargo project skeleton: lib crate + `folio` binary, `chrono` + `rust_decimal` deps
 - `src/types.rs`: `Ledger`, `Transaction`, `Posting`, `Tag`, `ParseError` types
 - `src/parser.rs`: parses multi-posting transactions from plain text
-- 16 passing tests covering parsing and all validations
+- 16 passing tests
 
 **Validations implemented:**
-- Postings in a transaction must sum to zero
-- No duplicate plain tags on a posting
-- No duplicate keys among key:value tags
-- Every posting must have exactly one `type:*` tag with a valid value (asset/liability/equity/income/expense)
-- Colon in tag value raises an error (quoted tags planned for later)
-- Numeric plain tags raise an error (ambiguous with amounts)
-- Blank lines inside a transaction raise an error
+- Postings sum to zero; no duplicate plain/key tags; exactly one valid `type:*` per posting
+- Colon in tag value and numeric plain tags rejected (quoted tags planned later)
+- Blank lines inside a transaction rejected
+
+### PR #3 — folio check command + infrastructure layer (merged)
+- `folio check <path>` — validates a ledger file, exits 0/1
+- `Filesystem` wrapper: `create()` / `create_null(files)`
+- `Output` wrapper: `create()` / `create_null()`; `track_stdout/stderr()` works on both real and null instances via `Weak`/`Arc` (zero cost when untracked)
+- `Args` wrapper: CLI arg parsing as infrastructure; `create_null(args)` for testable dispatch
+- `folio::run(args, fs, output)` — testable top-level entry point; `main.rs` is 3 lines
+- 32 passing tests: command tests (nullables only), narrow integration tests, null parity tests, e2e binary tests
+- CLAUDE.md updated with real patterns learned from implementation
 
 ## What's next
 
