@@ -91,7 +91,6 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
 }
 
 fn looks_like_amount(s: &str) -> bool {
-    let s = s.strip_prefix('+').unwrap_or(s);
     s.parse::<Decimal>().is_ok()
 }
 
