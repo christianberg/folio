@@ -27,15 +27,26 @@
 - 32 passing tests: command tests (nullables only), narrow integration tests, null parity tests, e2e binary tests
 - CLAUDE.md updated with real patterns learned from implementation
 
+### PR #6 — folio add command + serialiser (open, CI green)
+- `folio add <path>` — interactive transaction entry via `inquire`-based prompts
+- Tag entry shows live-filtered completions drawn from all tags in the existing ledger file
+- `src/serialiser.rs`: canonical form (tags alphabetical within each posting), used on write
+- `Prompt` infrastructure wrapper: `create()` / `create_null(answers)` — answer queue for tests
+- `Filesystem` gains `append_str` + `track_appends()` (same Weak/Arc pattern as Output)
+- 9 add command tests, 2 serialiser tests, 5 new integration tests
+
 ## What's next
 
-Milestone 1 (remaining):
-- Serialisation with canonical tag ordering (alphabetical)
-- Round-trip test: parse → serialise → parse produces identical result
-- Auto-balance posting (one posting per transaction may omit the amount)
+Milestone decisions made this session:
+- **Transit sugar deferred** — will add once core system is functional
+- **Auto-balance posting deferred** — less relevant with interactive entry flow
 
-Later milestones: query engine, prediction engine, TUI entry, bank import, reporting CLI.
+Milestone 2 (remaining):
+- Query engine: tag filter evaluation (AND, AND NOT, key wildcard), date range filtering
+- Report types: ledger, balance sheet, P&L
+
+Later milestones: prediction engine (Naïve Bayes), full TUI (ratatui), bank import, reporting CLI.
 
 ## Blockers
 
-None.
+None. PR #6 awaiting review/merge.
