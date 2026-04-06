@@ -1,6 +1,8 @@
 use chrono::NaiveDate;
 
-use crate::types::{Ledger, ParseError, Posting, Transaction};
+use rust_decimal::Decimal;
+
+use crate::types::{Ledger, ParseError, Posting, Tag, Transaction};
 
 pub fn parse(input: &str) -> Result<Ledger, ParseError> {
     let mut transactions = Vec::new();
@@ -39,8 +41,35 @@ pub fn parse(input: &str) -> Result<Ledger, ParseError> {
 }
 
 fn parse_posting(line: &str) -> Result<Posting, ParseError> {
-    if line.is_empty() {
-        return Err(ParseError("empty posting line".into()));
+    // The last whitespace-separated token that looks like a number is the amount.
+    // Everything before it is tags.
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+
+    let amount_idx = tokens
+        .iter()
+        .rposition(|t| looks_like_amount(t))
+        .ok_or_else(|| ParseError(format!("no amount found in posting: {line}")))?;
+
+    let amount: Decimal = tokens[amount_idx]
+        .parse()
+        .map_err(|_| ParseError(format!("invalid amount: {}", tokens[amount_idx])))?;
+
+    let tags = tokens[..amount_idx]
+        .iter()
+        .map(|t| parse_tag(t))
+        .collect();
+
+    Ok(Posting { tags, amount })
+}
+
+fn looks_like_amount(s: &str) -> bool {
+    let s = s.strip_prefix('+').unwrap_or(s);
+    s.parse::<Decimal>().is_ok()
+}
+
+fn parse_tag(s: &str) -> Tag {
+    match s.split_once(':') {
+        Some((key, value)) => Tag::KeyValue(key.to_string(), value.to_string()),
+        None => Tag::Plain(s.to_string()),
     }
-    Ok(Posting {})
 }

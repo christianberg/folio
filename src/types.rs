@@ -9,7 +9,16 @@ pub struct Transaction {
     pub postings: Vec<Posting>,
 }
 
-pub struct Posting {}
+pub struct Posting {
+    pub tags: Vec<Tag>,
+    pub amount: rust_decimal::Decimal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Tag {
+    Plain(String),
+    KeyValue(String, String),
+}
 
 #[derive(Debug)]
 pub struct ParseError(pub String);
