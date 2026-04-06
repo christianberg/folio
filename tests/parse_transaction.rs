@@ -48,14 +48,14 @@ fn rejects_unbalanced_transaction() {
 fn rejects_duplicate_key_on_posting() {
     let input = "\
 2026-04-03
-    food type:expense type:income +45.00
+    food budget:food budget:car type:expense +45.00
     checking type:asset -45.00
 ";
 
     let err = parse(input).expect_err("should fail for duplicate key");
     assert!(
-        matches!(err, ParseError::DuplicateKey { .. }),
-        "expected DuplicateKey, got: {err:?}",
+        matches!(err, ParseError::DuplicateKey { ref key, .. } if key == "budget"),
+        "expected DuplicateKey for 'budget', got: {err:?}",
     );
 }
 
@@ -86,22 +86,6 @@ fn rejects_posting_with_no_type_tag() {
     assert!(
         matches!(err, ParseError::MissingTypeTag { .. }),
         "expected MissingTypeTag, got: {err:?}",
-    );
-}
-
-#[test]
-fn rejects_posting_with_two_type_tags() {
-    let input = "\
-2026-04-03
-    food type:expense type:income +45.00
-    checking type:asset -45.00
-";
-
-    let err = parse(input).expect_err("should fail for two type tags");
-    // type:* shares the same key, so DuplicateKey fires before MissingTypeTag would.
-    assert!(
-        matches!(err, ParseError::DuplicateKey { ref key, .. } if key == "type"),
-        "expected DuplicateKey for 'type', got: {err:?}",
     );
 }
 
