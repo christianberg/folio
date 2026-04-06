@@ -135,7 +135,7 @@ mod prompt {
 
     #[test]
     fn null_text_with_completions_returns_none_when_queue_empty() {
-        let p = Prompt::create_null::<[&str; 0]>([]);
+        let p = Prompt::create_null(std::iter::empty::<&str>());
         assert_eq!(p.text_with_completions("Tag", &[]), None);
     }
 
@@ -153,7 +153,7 @@ mod prompt {
 
     #[test]
     fn null_confirm_returns_none_when_queue_empty() {
-        let p = Prompt::create_null::<[&str; 0]>([]);
+        let p = Prompt::create_null(std::iter::empty::<&str>());
         assert_eq!(p.confirm("Continue?", false), None);
     }
 }
