@@ -32,6 +32,7 @@ pub enum ParseError {
     UnbalancedTransaction { date: NaiveDate, sum: Decimal },
     DuplicateKey { key: String, line: String },
     DuplicateTag { tag: String, line: String },
+    MissingTypeTag { line: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -48,6 +49,9 @@ impl std::fmt::Display for ParseError {
             }
             ParseError::DuplicateTag { tag, line } => {
                 write!(f, "duplicate tag '{tag}' in posting: {line}")
+            }
+            ParseError::MissingTypeTag { line } => {
+                write!(f, "posting has no type:* tag: {line}")
             }
         }
     }
