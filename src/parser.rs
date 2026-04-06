@@ -87,9 +87,20 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
         }
     }
 
-    let has_type = tags.iter().any(|t| matches!(t, Tag::KeyValue(k, _) if k == "type"));
-    if !has_type {
-        return Err(ParseError::MissingTypeTag { line: line.to_string() });
+    const VALID_TYPES: &[&str] = &["asset", "liability", "equity", "income", "expense"];
+
+    match tags.iter().find_map(|t| match t {
+        Tag::KeyValue(k, v) if k == "type" => Some(v.as_str()),
+        _ => None,
+    }) {
+        None => return Err(ParseError::MissingTypeTag { line: line.to_string() }),
+        Some(v) if !VALID_TYPES.contains(&v) => {
+            return Err(ParseError::InvalidTypeValue {
+                value: v.to_string(),
+                line: line.to_string(),
+            })
+        }
+        _ => {}
     }
 
     Ok(Posting { tags, amount })

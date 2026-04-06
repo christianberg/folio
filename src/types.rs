@@ -33,6 +33,7 @@ pub enum ParseError {
     DuplicateKey { key: String, line: String },
     DuplicateTag { tag: String, line: String },
     MissingTypeTag { line: String },
+    InvalidTypeValue { value: String, line: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -52,6 +53,9 @@ impl std::fmt::Display for ParseError {
             }
             ParseError::MissingTypeTag { line } => {
                 write!(f, "posting has no type:* tag: {line}")
+            }
+            ParseError::InvalidTypeValue { value, line } => {
+                write!(f, "invalid type value '{value}' (expected asset, liability, equity, income, or expense): {line}")
             }
         }
     }

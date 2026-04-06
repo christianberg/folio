@@ -104,3 +104,18 @@ fn rejects_posting_with_two_type_tags() {
         "expected DuplicateKey for 'type', got: {err:?}",
     );
 }
+
+#[test]
+fn rejects_posting_with_invalid_type_value() {
+    let input = "\
+2026-04-03
+    food type:snack +45.00
+    checking type:asset -45.00
+";
+
+    let err = parse(input).expect_err("should fail for invalid type value");
+    assert!(
+        matches!(err, ParseError::InvalidTypeValue { ref value, .. } if value == "snack"),
+        "expected InvalidTypeValue for 'snack', got: {err:?}",
+    );
+}
