@@ -58,10 +58,23 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
         .parse()
         .map_err(|_| ParseError::InvalidAmount { token: tokens[amount_idx].to_string() })?;
 
-    let tags = tokens[..amount_idx]
+    let tags: Vec<Tag> = tokens[..amount_idx]
         .iter()
         .map(|t| parse_tag(t))
         .collect();
+
+    // Enforce at most one tag per key.
+    let mut seen_keys = std::collections::HashSet::new();
+    for tag in &tags {
+        if let Tag::KeyValue(key, _) = tag {
+            if !seen_keys.insert(key.as_str()) {
+                return Err(ParseError::DuplicateKey {
+                    key: key.clone(),
+                    line: line.to_string(),
+                });
+            }
+        }
+    }
 
     Ok(Posting { tags, amount })
 }
