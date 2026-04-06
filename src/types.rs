@@ -34,6 +34,8 @@ pub enum ParseError {
     DuplicateTag { tag: String, line: String },
     MissingTypeTag { line: String },
     InvalidTypeValue { value: String, line: String },
+    ColonInTagValue { tag: String, line: String },
+    NumericTag { tag: String, line: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -56,6 +58,12 @@ impl std::fmt::Display for ParseError {
             }
             ParseError::InvalidTypeValue { value, line } => {
                 write!(f, "invalid type value '{value}' (expected asset, liability, equity, income, or expense): {line}")
+            }
+            ParseError::ColonInTagValue { tag, line } => {
+                write!(f, "colon in tag value '{tag}' (use quotes for values containing colons): {line}")
+            }
+            ParseError::NumericTag { tag, line } => {
+                write!(f, "numeric tag '{tag}' is ambiguous (use quotes for numeric tag names): {line}")
             }
         }
     }

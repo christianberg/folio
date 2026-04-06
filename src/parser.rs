@@ -60,8 +60,8 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
 
     let tags: Vec<Tag> = tokens[..amount_idx]
         .iter()
-        .map(|t| parse_tag(t))
-        .collect();
+        .map(|t| parse_tag(t, line))
+        .collect::<Result<_, _>>()?;
 
     // Enforce no duplicate plain tags and at most one tag per key.
     let mut seen_plain = std::collections::HashSet::new();
@@ -110,9 +110,25 @@ fn looks_like_amount(s: &str) -> bool {
     s.parse::<Decimal>().is_ok()
 }
 
-fn parse_tag(s: &str) -> Tag {
+fn parse_tag(s: &str, line: &str) -> Result<Tag, ParseError> {
     match s.split_once(':') {
-        Some((key, value)) => Tag::KeyValue(key.to_string(), value.to_string()),
-        None => Tag::Plain(s.to_string()),
+        Some((key, value)) => {
+            if value.contains(':') {
+                return Err(ParseError::ColonInTagValue {
+                    tag: s.to_string(),
+                    line: line.to_string(),
+                });
+            }
+            Ok(Tag::KeyValue(key.to_string(), value.to_string()))
+        }
+        None => {
+            if s.parse::<Decimal>().is_ok() {
+                return Err(ParseError::NumericTag {
+                    tag: s.to_string(),
+                    line: line.to_string(),
+                });
+            }
+            Ok(Tag::Plain(s.to_string()))
+        }
     }
 }
