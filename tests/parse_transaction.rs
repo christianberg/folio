@@ -90,6 +90,53 @@ fn rejects_posting_with_no_type_tag() {
 }
 
 #[test]
+fn parses_transaction_covering_all_five_account_types() {
+    let input = "\
+2026-04-01
+    salary type:income                 +3000.00
+    checking type:asset                -2000.00
+    savings type:asset                 -500.00
+    mortgage type:liability            +300.00
+    retained-earnings type:equity      -700.00
+    rent type:expense                  -100.00
+";
+
+    let ledger = parse(input).expect("should parse without error");
+    let tx = &ledger.transactions[0];
+    assert_eq!(tx.postings.len(), 6);
+
+    let types: Vec<&str> = tx.postings.iter().filter_map(|p| {
+        p.tags.iter().find_map(|t| match t {
+            folio::Tag::KeyValue(k, v) if k == "type" => Some(v.as_str()),
+            _ => None,
+        })
+    }).collect();
+
+    assert!(types.contains(&"income"));
+    assert!(types.contains(&"asset"));
+    assert!(types.contains(&"liability"));
+    assert!(types.contains(&"equity"));
+    assert!(types.contains(&"expense"));
+}
+
+#[test]
+fn rejects_unbalanced_transaction_with_multiple_postings() {
+    let input = "\
+2026-04-01
+    salary type:income    +3000.00
+    checking type:asset   -2000.00
+    savings type:asset    -500.00
+";
+    // sum is +500.00, not zero
+
+    let err = parse(input).expect_err("should fail for unbalanced multi-posting transaction");
+    assert!(
+        matches!(err, ParseError::UnbalancedTransaction { .. }),
+        "expected UnbalancedTransaction, got: {err:?}",
+    );
+}
+
+#[test]
 fn rejects_posting_with_invalid_type_value() {
     let input = "\
 2026-04-03
