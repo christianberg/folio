@@ -192,6 +192,36 @@ fn parses_empty_input() {
 }
 
 #[test]
+fn rejects_colon_in_tag_value() {
+    let input = "\
+2026-04-03
+    ref:INV:001 type:expense  45.00
+    checking type:asset       -45.00
+";
+
+    let err = parse(input).expect_err("should fail for colon in tag value");
+    assert!(
+        matches!(err, ParseError::ColonInTagValue { ref tag, .. } if tag == "ref:INV:001"),
+        "expected ColonInTagValue, got: {err:?}",
+    );
+}
+
+#[test]
+fn rejects_numeric_plain_tag() {
+    let input = "\
+2026-04-03
+    food 2024 type:expense  45.00
+    checking type:asset     -45.00
+";
+
+    let err = parse(input).expect_err("should fail for numeric plain tag");
+    assert!(
+        matches!(err, ParseError::NumericTag { ref tag, .. } if tag == "2024"),
+        "expected NumericTag, got: {err:?}",
+    );
+}
+
+#[test]
 fn rejects_posting_with_invalid_type_value() {
     let input = "\
 2026-04-03
