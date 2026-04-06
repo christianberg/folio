@@ -20,12 +20,19 @@ pub fn parse(input: &str) -> Result<Ledger, ParseError> {
                 .map_err(|_| ParseError::InvalidDate { line: trimmed.to_string() })?;
 
             let mut postings = Vec::new();
+            let mut saw_blank = false;
             while let Some(posting_line) = lines.peek() {
                 if posting_line.starts_with(' ') || posting_line.starts_with('\t') {
+                    if saw_blank {
+                        return Err(ParseError::BlankLineInTransaction { date });
+                    }
                     let posting_trimmed = posting_line.trim();
                     if !posting_trimmed.is_empty() && !posting_trimmed.starts_with('#') {
                         postings.push(parse_posting(posting_trimmed)?);
                     }
+                    lines.next();
+                } else if posting_line.trim().is_empty() {
+                    saw_blank = true;
                     lines.next();
                 } else {
                     break;

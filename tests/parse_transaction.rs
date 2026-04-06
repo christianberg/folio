@@ -173,7 +173,7 @@ fn ignores_comments_and_blank_lines() {
 # this is a comment
 
 2026-04-03
-    # inline comment not supported but blank lines are fine
+    # inline comment on a posting line
     food type:expense    45.00
     checking type:asset  -45.00
 
@@ -189,6 +189,22 @@ fn ignores_comments_and_blank_lines() {
 fn parses_empty_input() {
     let ledger = parse("").expect("should parse empty input without error");
     assert_eq!(ledger.transactions.len(), 0);
+}
+
+#[test]
+fn rejects_blank_line_inside_transaction() {
+    let input = "\
+2026-04-03
+    food type:expense  45.00
+
+    checking type:asset  -45.00
+";
+
+    let err = parse(input).expect_err("should fail for blank line inside transaction");
+    assert!(
+        matches!(err, ParseError::BlankLineInTransaction { .. }),
+        "expected BlankLineInTransaction, got: {err:?}",
+    );
 }
 
 #[test]
