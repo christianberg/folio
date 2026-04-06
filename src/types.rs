@@ -31,6 +31,7 @@ pub enum ParseError {
     MissingAmount { line: String },
     UnbalancedTransaction { date: NaiveDate, sum: Decimal },
     DuplicateKey { key: String, line: String },
+    DuplicateTag { tag: String, line: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -44,6 +45,9 @@ impl std::fmt::Display for ParseError {
             }
             ParseError::DuplicateKey { key, line } => {
                 write!(f, "duplicate key '{key}' in posting: {line}")
+            }
+            ParseError::DuplicateTag { tag, line } => {
+                write!(f, "duplicate tag '{tag}' in posting: {line}")
             }
         }
     }
