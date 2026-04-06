@@ -10,7 +10,7 @@ Tests are narrow, state-based, and sociable. Infrastructure is isolated via Null
 **Non-negotiable rules:**
 - No mock crates (`mockall`, `mockito`, `mock_instant`, etc.) in logic tests
 - Never assert on whether a method was called — check outputs and state instead
-- Infrastructure (filesystem, clocks, network) must always be wrapped; logic code never calls `std::fs`, `SystemTime`, `reqwest`, etc. directly
+- Infrastructure (filesystem, clocks, network, CLI args) must always be wrapped; logic code never calls `std::fs`, `SystemTime`, `reqwest`, `std::env::args`, etc. directly
 - Every infrastructure wrapper must support zero-impact instantiation via `create_null()`
 
 ---
@@ -19,102 +19,93 @@ Tests are narrow, state-based, and sociable. Infrastructure is isolated via Null
 
 ```
 src/
-  main.rs               # Entry point: wires real infrastructure, calls run()
-  lib.rs                # Re-exports; top-level integration
-  logic/                # Pure logic — no I/O, no infrastructure calls
+  main.rs               # Entry point: wires real infrastructure, calls folio::run()
+  lib.rs                # Public API + top-level run() dispatch
   infrastructure/       # Infrastructure Wrappers only
-    mod.rs
-    clock.rs            # Example canonical Nullable (see below)
-    filesystem.rs
+    args.rs             # CLI argument parsing (clap)
+    filesystem.rs       # File I/O
+    output.rs           # stdout/stderr
+  commands/             # Command logic — pure, receives infrastructure via injection
+    check.rs
 tests/
-  *.rs                  # Integration tests (hit real I/O, run separately)
+  check_command.rs      # Command tests using nullables (no real I/O)
+  integration.rs        # Narrow integration + e2e tests (real I/O)
 ```
 
-Logic code is entirely in `src/logic/`. It receives infrastructure via injected trait objects or generic bounds. It never imports from `std::fs`, `std::net`, `std::time::SystemTime`, `std::env`, etc. directly.
+Logic code receives infrastructure via function parameters. It never imports from `std::fs`,
+`std::time::SystemTime`, `std::env`, etc. directly.
 
 ---
 
 ## Infrastructure Wrappers
 
-Every piece of infrastructure **must** live in `src/infrastructure/` and implement this structure:
+Every wrapper lives in `src/infrastructure/` and exposes `create()` (real) and `create_null()`
+(no external I/O). See the existing wrappers as canonical examples:
+
+> `src/infrastructure/filesystem.rs` — configurable-response nullable (map of path → content)
+> `src/infrastructure/output.rs` — output-tracking nullable (stdout/stderr)
+> `src/infrastructure/args.rs` — CLI arg parsing; `create_null(args)` uses clap's `parse_from`
+
+### Configurable-response wrapper (e.g. Filesystem)
 
 ```rust
-pub struct Clock {
-    inner: ClockInner,
-}
+pub struct Filesystem(Inner);
 
-enum ClockInner {
+enum Inner {
     Real,
-    Null { now_ms: u64 },
+    Null(HashMap<String, String>),
 }
 
-impl Clock {
-    /// Production instance — uses real system time.
-    pub fn create() -> Self {
-        Clock { inner: ClockInner::Real }
+impl Filesystem {
+    pub fn create() -> Self { Self(Inner::Real) }
+
+    pub fn create_null(files: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>) -> Self {
+        Self(Inner::Null(files.into_iter().map(|(k, v)| (k.into(), v.into())).collect()))
     }
 
-    /// Nullable instance — no real I/O; configurable via options.
-    pub fn create_null(now_ms: u64) -> Self {
-        Clock { inner: ClockInner::Null { now_ms } }
-    }
-
-    pub fn now_ms(&self) -> u64 {
-        match &self.inner {
-            ClockInner::Real => {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64
-            }
-            ClockInner::Null { now_ms } => *now_ms,
+    pub fn read_to_string(&self, path: &str) -> Result<String, std::io::Error> {
+        match &self.0 {
+            Inner::Real => std::fs::read_to_string(path),
+            Inner::Null(files) => files.get(path).cloned()
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, ...)),
         }
     }
 }
 ```
 
-Once a canonical wrapper exists in the repo, point to it here:
-> See `src/infrastructure/clock.rs` for a worked example.
+### Output-tracking wrapper (e.g. Output)
 
----
-
-## Output Tracking
-
-To observe side effects in tests without mocks, infrastructure wrappers expose an output tracker:
+The wrapper holds a `Weak` reference; the `OutputTracker` holds the `Arc`. When no tracker is
+registered nothing is allocated. When the tracker is dropped, accumulation stops automatically.
+Tracking works on **both real and null instances**.
 
 ```rust
-use std::sync::{Arc, Mutex};
-
-#[derive(Clone, Default)]
-pub struct OutputTracker<T> {
-    data: Arc<Mutex<Vec<T>>>,
+pub struct Output {
+    stdout: Mutex<Option<Weak<Mutex<Vec<String>>>>>,
+    real: bool,
 }
 
-impl<T: Clone> OutputTracker<T> {
-    pub fn new() -> Self { Self::default() }
-    pub fn track(&self, item: T) { self.data.lock().unwrap().push(item); }
-    pub fn all(&self) -> Vec<T> { self.data.lock().unwrap().clone() }
-}
-```
+impl Output {
+    pub fn println(&self, msg: &str) {
+        if let Some(arc) = self.stdout.lock().unwrap().as_ref().and_then(Weak::upgrade) {
+            arc.lock().unwrap().push(msg.to_string());
+        }
+        if self.real { println!("{msg}"); }
+    }
 
-Infrastructure wrappers accept an optional `OutputTracker` and record their side effects into it:
-
-```rust
-pub struct Filesystem {
-    tracker: Option<OutputTracker<WriteEvent>>,
-    // ...
-}
-
-pub struct WriteEvent { pub path: String, pub content: String }
-
-impl Filesystem {
-    pub fn track_writes(&self) -> OutputTracker<WriteEvent> {
-        // attach and return tracker
+    pub fn track_stdout(&self) -> OutputTracker {
+        let arc = Arc::new(Mutex::new(Vec::new()));
+        *self.stdout.lock().unwrap() = Some(Arc::downgrade(&arc));
+        OutputTracker(arc)
     }
 }
-```
 
-Tests then assert on `.all()` rather than on mock expectations.
+pub struct OutputTracker(Arc<Mutex<Vec<String>>>);
+
+impl OutputTracker {
+    pub fn all(&self) -> Vec<String> { self.0.lock().unwrap().clone() }
+}
+```
 
 ---
 
@@ -123,84 +114,49 @@ Tests then assert on `.all()` rather than on mock expectations.
 ### DO: State-based tests with a `run()` helper (Signature Shielding)
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn exits_zero_for_valid_file() {
+    assert_eq!(run("ledger.folio", VALID).exit_code, 0);
+}
 
-    #[test]
-    fn formats_amount_correctly() {
-        let result = run(Input { amount_cents: 4500, ..Input::default() });
-        assert_eq!(result.formatted, "+45.00");
-    }
+struct RunResult { exit_code: i32, stdout: Vec<String>, stderr: Vec<String> }
 
-    struct Input {
-        amount_cents: i64,
-        currency: &'static str,
-    }
-
-    impl Default for Input {
-        fn default() -> Self {
-            Input { amount_cents: 0, currency: "USD" }
-        }
-    }
-
-    struct Output {
-        formatted: String,
-    }
-
-    fn run(input: Input) -> Output {
-        let clock = Clock::create_null(1_000_000);
-        let svc = PostingFormatter::new(clock);
-        let formatted = svc.format(input.amount_cents, input.currency);
-        Output { formatted }
-    }
+fn run(path: &str, content: &str) -> RunResult {
+    let fs = Filesystem::create_null([(path, content)]);
+    let output = Output::create_null();
+    let stdout = output.track_stdout();
+    let stderr = output.track_stderr();
+    let exit_code = check::run(path, &fs, &output);
+    RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all() }
 }
 ```
-
-The `run()` helper centralises setup. Adding a new dependency means editing `run()`, not every test.
 
 ### DO: Output tracking for side effects
 
 ```rust
-#[test]
-fn writes_transaction_to_file() {
-    let fs = Filesystem::create_null();
-    let writes = fs.track_writes();
-    let ledger = Ledger::new(fs);
-    ledger.append(transaction());
-    assert_eq!(writes.all().len(), 1);
-    assert!(writes.all()[0].content.contains("type:expense"));
+fn prints_ok_to_stdout_for_valid_file() {
+    let r = run("ledger.folio", VALID);
+    assert!(r.stdout.iter().any(|l| l.contains("ok")));
 }
 ```
 
-### DON'T: Mock crates
+### DON'T: Mock crates or interaction assertions
 
 ```rust
 // NEVER:
-use mockall::automock;
-#[automock]
-trait Clock { fn now_ms(&self) -> u64; }
-let mut mock = MockClock::new();
 mock.expect_now_ms().returning(|| 1000);
-```
-
-### DON'T: Interaction assertions
-
-```rust
-// NEVER check whether a method was called — check what the system produced instead.
-mock.assert_called_once(); // ← never
+mock.assert_called_once();
 ```
 
 ---
 
 ## Narrow Integration Tests
 
-Infrastructure wrappers get their own integration tests in `tests/` that hit real systems (real filesystem, real HTTP). These are the **only** tests allowed to do real I/O. Run them separately from unit tests:
+`tests/integration.rs` is structured in four sections:
 
-```
-cargo test                        # unit tests only (no real I/O)
-cargo test --test integration     # integration tests
-```
+- **Per-wrapper narrow tests** — hit real I/O for one wrapper only (real file read, real stdout)
+- **Null parity tests** — verify the null instance returns the same error kinds as the real one; catches null drift
+- **Args narrow test** — `create_null` only; `create()` is a one-liner wrapping clap, too thin for a narrow test
+- **`e2e` section** — spawns the real binary via `env!("CARGO_BIN_EXE_folio")` for full-stack smoke tests
 
 ---
 
@@ -212,5 +168,6 @@ cargo test --test integration     # integration tests
 | `assert!(mock.was_called())` | Assert on return values or tracked output |
 | Calling `std::fs` directly in logic | Inject a `Filesystem` wrapper |
 | `SystemTime::now()` in logic | Inject a `Clock` wrapper |
-| `std::env::var()` in logic | Inject an `Env` wrapper |
+| `std::env::args()` / `clap::Parser::parse()` in logic | Inject an `Args` wrapper |
+| Tracking only on null instances | Use `Weak`/`Arc` so tracking works on real instances too |
 | Giant test setup repeated per test | Centralise in a `run()` helper (Signature Shielding) |
