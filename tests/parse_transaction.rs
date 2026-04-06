@@ -1,4 +1,4 @@
-use folio::{parse, Tag};
+use folio::{parse, ParseError, Tag};
 
 #[test]
 fn parses_a_simple_expense_transaction() {
@@ -27,4 +27,19 @@ fn parses_a_simple_expense_transaction() {
     assert!(asset.tags.contains(&Tag::KeyValue("budget".into(), "food".into())));
     assert!(asset.tags.contains(&Tag::Plain("checking".into())));
     assert!(asset.tags.contains(&Tag::KeyValue("type".into(), "asset".into())));
+}
+
+#[test]
+fn rejects_unbalanced_transaction() {
+    let input = "\
+2026-04-03
+    food grocery type:expense +45.00
+    budget:food checking type:asset -40.00
+";
+
+    let err = parse(input).expect_err("should fail for unbalanced transaction");
+    assert!(
+        matches!(err, ParseError::UnbalancedTransaction { .. }),
+        "expected UnbalancedTransaction, got: {err:?}",
+    );
 }
