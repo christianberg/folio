@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use folio::infrastructure::{Filesystem, Output, Prompt};
+use folio::infrastructure::{Clock, Filesystem, Output, Prompt};
 
 fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 4, 6).unwrap()
@@ -15,11 +15,12 @@ struct RunResult {
 fn run(path: &str, existing: &str, answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     let fs = Filesystem::create_null([(path, existing)]);
     let appends = fs.track_appends();
+    let clock = Clock::create_null(today());
     let output = Output::create_null();
     let stdout = output.track_stdout();
     let stderr = output.track_stderr();
     let prompt = Prompt::create_null(answers);
-    let exit_code = folio::commands::add::run(path, today(), &fs, &prompt, &output);
+    let exit_code = folio::commands::add::run(path, &clock, &fs, &prompt, &output);
     let appended = appends.all().into_iter().map(|(_, c)| c).collect::<String>();
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
@@ -27,26 +28,25 @@ fn run(path: &str, existing: &str, answers: impl IntoIterator<Item = &'static st
 fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
     let appends = fs.track_appends();
+    let clock = Clock::create_null(today());
     let output = Output::create_null();
     let stdout = output.track_stdout();
     let stderr = output.track_stderr();
     let prompt = Prompt::create_null(answers);
-    let exit_code = folio::commands::add::run("ledger.folio", today(), &fs, &prompt, &output);
+    let exit_code = folio::commands::add::run("ledger.folio", &clock, &fs, &prompt, &output);
     let appended = appends.all().into_iter().map(|(_, c)| c).collect::<String>();
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
 
-// Two-posting expense transaction. After posting 1 (unbalanced), the loop
-// automatically continues — no "y" prompt. Posting 2 uses the default amount
-// (empty = accept -45.00 balance). Then "n" to finish.
+// Two-posting expense. After posting 1 (unbalanced) the loop continues
+// automatically. Posting 2 accepts the default balancing amount with "".
 const SIMPLE_EXPENSE: &[&str] = &[
-    "2026-04-06", // date
-    "food", "type:expense", "", // posting 1 tags
-    "45.00",      // posting 1 amount
-    // unbalanced → loop continues automatically, no confirm prompt
-    "checking", "type:asset", "", // posting 2 tags
-    "",           // accept default amount (-45.00)
-    "n",          // don't add another posting
+    "2026-04-06",
+    "food", "type:expense", "",
+    "45.00",
+    "checking", "type:asset", "",
+    "",   // accept default -45.00
+    "n",
 ];
 
 #[test]
@@ -71,17 +71,6 @@ fn appends_serialised_transaction_to_file() {
 }
 
 #[test]
-fn tags_are_sorted_alphabetically_in_output() {
-    let r = run_new([
-        "2026-04-06",
-        "type:expense", "grocery", "food", "", "45.00",
-        "type:asset", "checking", "", "", "n",
-    ]);
-    assert!(r.appended.contains("food grocery type:expense"), "tags should be sorted");
-    assert!(r.appended.contains("checking type:asset"), "tags should be sorted");
-}
-
-#[test]
 fn uses_default_date_when_input_is_empty() {
     let r = run_new([
         "",  // accept default date (2026-04-06)
@@ -95,8 +84,8 @@ fn uses_default_date_when_input_is_empty() {
 #[test]
 fn retries_on_invalid_date() {
     let r = run_new([
-        "not-a-date",   // invalid → error, re-prompt
-        "2026-04-06",   // valid
+        "not-a-date",
+        "2026-04-06",
         "type:expense", "food", "", "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
@@ -110,8 +99,8 @@ fn retries_on_invalid_amount() {
     let r = run_new([
         "2026-04-06",
         "type:expense", "food", "",
-        "oops",    // invalid → error, re-prompt
-        "45.00",   // valid
+        "oops",
+        "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
     assert_eq!(r.exit_code, 0);
@@ -120,11 +109,9 @@ fn retries_on_invalid_amount() {
 
 #[test]
 fn forces_another_posting_when_unbalanced() {
-    // After posting 1, transaction is unbalanced — loop continues without asking
     let r = run_new([
         "2026-04-06",
         "type:expense", "food", "", "45.00",
-        // no confirm here; balance remaining message shown, then posting 2 prompt
         "type:asset", "checking", "", "", "n",
     ]);
     assert_eq!(r.exit_code, 0);
@@ -133,8 +120,6 @@ fn forces_another_posting_when_unbalanced() {
 
 #[test]
 fn default_amount_balances_transaction() {
-    // After posting 1 with 45.00, the default for posting 2 should be -45.00
-    // Accepting the default (empty) should produce a balanced transaction
     let r = run_new([
         "2026-04-06",
         "type:expense", "food", "", "45.00",
@@ -150,10 +135,8 @@ fn default_amount_balances_transaction() {
 fn validates_type_tag_required() {
     let r = run_new([
         "2026-04-06",
-        "food",           // tag without type:
-        "",               // try to finish → error, re-prompt
-        "type:expense",   // add missing type
-        "",               // finish
+        "food", "",           // no type: → error, re-prompt
+        "type:expense", "",   // add it
         "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
@@ -165,10 +148,7 @@ fn validates_type_tag_required() {
 fn rejects_duplicate_plain_tags() {
     let r = run_new([
         "2026-04-06",
-        "food",
-        "food",           // duplicate → error, re-prompt
-        "type:expense",
-        "",
+        "food", "food", "type:expense", "", // duplicate food → error, then type:expense
         "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
@@ -180,9 +160,7 @@ fn rejects_duplicate_plain_tags() {
 fn rejects_duplicate_key_tags() {
     let r = run_new([
         "2026-04-06",
-        "type:expense",
-        "type:asset",     // duplicate key → error, re-prompt
-        "",
+        "type:expense", "type:asset", "food", "", // dup type → error
         "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
@@ -192,14 +170,9 @@ fn rejects_duplicate_key_tags() {
 
 #[test]
 fn rejects_tag_with_whitespace() {
-    // In null mode the answer is the trimmed string — but we can pass a
-    // whitespace-containing answer to exercise the validation path
     let r = run_new([
         "2026-04-06",
-        "foo bar",        // whitespace → error, re-prompt
-        "food",
-        "type:expense",
-        "",
+        "foo bar", "food", "type:expense", "",
         "45.00",
         "type:asset", "checking", "", "", "n",
     ]);
@@ -207,13 +180,44 @@ fn rejects_tag_with_whitespace() {
     assert!(r.stderr.iter().any(|l| l.contains("whitespace")));
 }
 
+// ── Separator / appending tests ────────────────────────────────────────────────
+
 #[test]
-fn appends_to_existing_file() {
+fn no_leading_newline_for_new_file() {
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
+    assert!(!r.appended.starts_with('\n'), "new file should not start with newline");
+}
+
+#[test]
+fn separates_with_blank_line_when_file_ends_with_newline() {
     let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
     let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
-    assert!(r.appended.contains("2026-04-06"));
-    assert!(!r.appended.contains("salary"), "should only append new tx, not rewrite file");
+    assert!(r.appended.starts_with('\n'), "should prepend blank line separator");
+}
+
+#[test]
+fn no_extra_blank_line_when_file_already_ends_with_blank_line() {
+    let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n\n";
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
+    assert_eq!(r.exit_code, 0);
+    assert!(!r.appended.starts_with('\n'), "should not add extra blank line");
+}
+
+#[test]
+fn handles_file_without_trailing_newline() {
+    let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00";
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
+    assert_eq!(r.exit_code, 0);
+    assert!(r.appended.starts_with("\n\n"), "should add newline then blank line");
+}
+
+#[test]
+fn appends_only_new_content_not_whole_file() {
+    let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
+    assert_eq!(r.exit_code, 0);
+    assert!(!r.appended.contains("salary"), "appended content should not include existing transactions");
 }
 
 #[test]

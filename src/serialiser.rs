@@ -69,7 +69,10 @@ mod tests {
 
     #[test]
     fn two_posting_transaction_round_trips() {
-        let input = "2026-04-06\n    food grocery type:expense 45.00\n    budget:food checking type:asset -45.00";
+        let input = "\
+2026-04-06
+    food grocery type:expense 45.00
+    budget:food checking type:asset -45.00";
         let ledger = crate::parser::parse(input).unwrap();
         let serialised = serialise(&ledger.transactions[0]);
         assert_eq!(serialised, input);

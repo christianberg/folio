@@ -106,6 +106,22 @@ mod output {
     }
 }
 
+// ── Clock ─────────────────────────────────────────────────────────────────────
+
+mod clock {
+    use chrono::NaiveDate;
+    use folio::infrastructure::Clock;
+
+    // Clock::create() delegates to chrono::Local::now() — too thin to narrow-test.
+
+    #[test]
+    fn null_returns_configured_date() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let clock = Clock::create_null(date);
+        assert_eq!(clock.today(), date);
+    }
+}
+
 // ── Prompt ────────────────────────────────────────────────────────────────────
 
 mod prompt {

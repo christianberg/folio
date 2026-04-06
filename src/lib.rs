@@ -12,9 +12,9 @@ pub fn run(args: infrastructure::Args, fs: &infrastructure::Filesystem, output: 
     match args.command {
         infrastructure::Command::Check { path } => commands::check::run(&path, fs, output),
         infrastructure::Command::Add { path } => {
-            let today = chrono::Local::now().date_naive();
+            let clock = infrastructure::Clock::create();
             let prompt = infrastructure::Prompt::create();
-            commands::add::run(&path, today, fs, &prompt, output)
+            commands::add::run(&path, &clock, fs, &prompt, output)
         }
     }
 }

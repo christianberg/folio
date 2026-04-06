@@ -1,19 +1,34 @@
-use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::HashSet;
 
-use crate::infrastructure::{Filesystem, Output, Prompt};
+use crate::infrastructure::{Clock, Filesystem, Output, Prompt};
 use crate::serialiser;
 use crate::types::{Ledger, Posting, Tag, Transaction};
 use crate::{parser, ParseError};
 
-pub fn run(path: &str, today: NaiveDate, fs: &Filesystem, prompt: &Prompt, output: &Output) -> i32 {
-    let vocabulary = match load_vocabulary(path, fs, output) {
-        Some(v) => v,
-        None => return 1,
+pub fn run(path: &str, clock: &Clock, fs: &Filesystem, prompt: &Prompt, output: &Output) -> i32 {
+    let existing_content = match fs.read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            output.eprintln(&format!("Error reading {path}: {e}"));
+            return 1;
+        }
     };
 
-    let date = match ask_date(today, prompt, output) {
+    let vocabulary = if existing_content.is_empty() {
+        vec![]
+    } else {
+        match parser::parse(&existing_content) {
+            Ok(ledger) => tag_vocabulary(&ledger),
+            Err(e) => {
+                output.eprintln(&format!("Error parsing {path}: {e}"));
+                return 1;
+            }
+        }
+    };
+
+    let date = match ask_date(clock.today(), prompt, output) {
         Some(d) => d,
         None => return 0,
     };
@@ -25,8 +40,9 @@ pub fn run(path: &str, today: NaiveDate, fs: &Filesystem, prompt: &Prompt, outpu
 
     let transaction = Transaction { date, postings };
     let serialised = serialiser::serialise(&transaction);
+    let prefix = append_prefix(&existing_content);
 
-    if let Err(e) = fs.append_str(path, &format!("{serialised}\n")) {
+    if let Err(e) = fs.append_str(path, &format!("{prefix}{serialised}\n")) {
         output.eprintln(&format!("Error writing {path}: {e}"));
         return 1;
     }
@@ -35,20 +51,13 @@ pub fn run(path: &str, today: NaiveDate, fs: &Filesystem, prompt: &Prompt, outpu
     0
 }
 
-fn load_vocabulary(path: &str, fs: &Filesystem, output: &Output) -> Option<Vec<String>> {
-    match fs.read_to_string(path) {
-        Ok(content) => match parser::parse(&content) {
-            Ok(ledger) => Some(tag_vocabulary(&ledger)),
-            Err(e) => {
-                output.eprintln(&format!("Error parsing {path}: {e}"));
-                None
-            }
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(vec![]),
-        Err(e) => {
-            output.eprintln(&format!("Error reading {path}: {e}"));
-            None
-        }
+fn append_prefix(existing: &str) -> &'static str {
+    if existing.is_empty() || existing.ends_with("\n\n") {
+        ""
+    } else if existing.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
     }
 }
 
