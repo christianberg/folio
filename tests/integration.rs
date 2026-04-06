@@ -37,6 +37,35 @@ mod filesystem {
         let err = fs_null.read_to_string("missing.folio").unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
     }
+
+    #[test]
+    fn appends_to_real_file() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let path = f.path().to_str().unwrap();
+
+        let fs = Filesystem::create();
+        fs.append_str(path, "first\n").unwrap();
+        fs.append_str(path, "second\n").unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "first\nsecond\n");
+    }
+
+    #[test]
+    fn null_append_is_readable_via_read_to_string() {
+        let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
+        fs.append_str("out.folio", "hello\n").unwrap();
+        assert_eq!(fs.read_to_string("out.folio").unwrap(), "hello\n");
+    }
+
+    #[test]
+    fn track_appends_captures_path_and_content() {
+        let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
+        let tracker = fs.track_appends();
+        fs.append_str("a.folio", "tx1\n").unwrap();
+        fs.append_str("b.folio", "tx2\n").unwrap();
+        let appends = tracker.all();
+        assert_eq!(appends[0], ("a.folio".to_string(), "tx1\n".to_string()));
+        assert_eq!(appends[1], ("b.folio".to_string(), "tx2\n".to_string()));
+    }
 }
 
 // ── Output ────────────────────────────────────────────────────────────────────
@@ -91,6 +120,15 @@ mod args {
         assert!(
             matches!(args.command, folio::infrastructure::Command::Check { ref path } if path == "ledger.folio"),
             "expected Check subcommand with correct path",
+        );
+    }
+
+    #[test]
+    fn null_parses_add_subcommand() {
+        let args = Args::create_null(["folio", "add", "ledger.folio"]);
+        assert!(
+            matches!(args.command, folio::infrastructure::Command::Add { ref path } if path == "ledger.folio"),
+            "expected Add subcommand with correct path",
         );
     }
 }
