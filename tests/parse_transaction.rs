@@ -43,3 +43,18 @@ fn rejects_unbalanced_transaction() {
         "expected UnbalancedTransaction, got: {err:?}",
     );
 }
+
+#[test]
+fn rejects_duplicate_key_on_posting() {
+    let input = "\
+2026-04-03
+    food type:expense type:income +45.00
+    checking type:asset -45.00
+";
+
+    let err = parse(input).expect_err("should fail for duplicate key");
+    assert!(
+        matches!(err, ParseError::DuplicateKey { .. }),
+        "expected DuplicateKey, got: {err:?}",
+    );
+}

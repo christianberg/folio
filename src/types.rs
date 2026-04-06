@@ -30,6 +30,7 @@ pub enum ParseError {
     InvalidAmount { token: String },
     MissingAmount { line: String },
     UnbalancedTransaction { date: NaiveDate, sum: Decimal },
+    DuplicateKey { key: String, line: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -40,6 +41,9 @@ impl std::fmt::Display for ParseError {
             ParseError::MissingAmount { line } => write!(f, "no amount found in posting: {line}"),
             ParseError::UnbalancedTransaction { date, sum } => {
                 write!(f, "transaction on {date} does not balance (sum: {sum})")
+            }
+            ParseError::DuplicateKey { key, line } => {
+                write!(f, "duplicate key '{key}' in posting: {line}")
             }
         }
     }
