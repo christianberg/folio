@@ -58,3 +58,18 @@ fn rejects_duplicate_key_on_posting() {
         "expected DuplicateKey, got: {err:?}",
     );
 }
+
+#[test]
+fn rejects_duplicate_plain_tag_on_posting() {
+    let input = "\
+2026-04-03
+    food food type:expense +45.00
+    checking type:asset -45.00
+";
+
+    let err = parse(input).expect_err("should fail for duplicate plain tag");
+    assert!(
+        matches!(err, ParseError::DuplicateTag { .. }),
+        "expected DuplicateTag, got: {err:?}",
+    );
+}

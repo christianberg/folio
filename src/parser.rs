@@ -63,15 +63,26 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
         .map(|t| parse_tag(t))
         .collect();
 
-    // Enforce at most one tag per key.
+    // Enforce no duplicate plain tags and at most one tag per key.
+    let mut seen_plain = std::collections::HashSet::new();
     let mut seen_keys = std::collections::HashSet::new();
     for tag in &tags {
-        if let Tag::KeyValue(key, _) = tag {
-            if !seen_keys.insert(key.as_str()) {
-                return Err(ParseError::DuplicateKey {
-                    key: key.clone(),
-                    line: line.to_string(),
-                });
+        match tag {
+            Tag::Plain(name) => {
+                if !seen_plain.insert(name.as_str()) {
+                    return Err(ParseError::DuplicateTag {
+                        tag: name.clone(),
+                        line: line.to_string(),
+                    });
+                }
+            }
+            Tag::KeyValue(key, _) => {
+                if !seen_keys.insert(key.as_str()) {
+                    return Err(ParseError::DuplicateKey {
+                        key: key.clone(),
+                        line: line.to_string(),
+                    });
+                }
             }
         }
     }
