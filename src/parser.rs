@@ -1,5 +1,4 @@
 use chrono::NaiveDate;
-
 use rust_decimal::Decimal;
 
 use crate::types::{Ledger, ParseError, Posting, Tag, Transaction};
@@ -18,7 +17,7 @@ pub fn parse(input: &str) -> Result<Ledger, ParseError> {
         // A non-indented, non-empty line is a transaction date.
         if !line.starts_with(' ') && !line.starts_with('\t') {
             let date = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
-                .map_err(|_| ParseError(format!("invalid date: {trimmed}")))?;
+                .map_err(|_| ParseError::InvalidDate { line: trimmed.to_string() })?;
 
             let mut postings = Vec::new();
             while let Some(posting_line) = lines.peek() {
@@ -31,6 +30,11 @@ pub fn parse(input: &str) -> Result<Ledger, ParseError> {
                 } else {
                     break;
                 }
+            }
+
+            let sum: Decimal = postings.iter().map(|p| p.amount).sum();
+            if !sum.is_zero() {
+                return Err(ParseError::UnbalancedTransaction { date, sum });
             }
 
             transactions.push(Transaction { date, postings });
@@ -48,11 +52,11 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
     let amount_idx = tokens
         .iter()
         .rposition(|t| looks_like_amount(t))
-        .ok_or_else(|| ParseError(format!("no amount found in posting: {line}")))?;
+        .ok_or_else(|| ParseError::MissingAmount { line: line.to_string() })?;
 
     let amount: Decimal = tokens[amount_idx]
         .parse()
-        .map_err(|_| ParseError(format!("invalid amount: {}", tokens[amount_idx])))?;
+        .map_err(|_| ParseError::InvalidAmount { token: tokens[amount_idx].to_string() })?;
 
     let tags = tokens[..amount_idx]
         .iter()
