@@ -192,6 +192,25 @@ fn parses_empty_input() {
 }
 
 #[test]
+fn parses_non_ascii_characters_in_tags() {
+    let input = "\
+2026-04-03
+    café résumé type:expense  45.00
+    vérification type:asset  -45.00
+";
+
+    let ledger = parse(input).expect("should parse non-ASCII tags without error");
+    let tx = &ledger.transactions[0];
+
+    let expense = &tx.postings[0];
+    assert!(expense.tags.contains(&Tag::Plain("café".into())));
+    assert!(expense.tags.contains(&Tag::Plain("résumé".into())));
+
+    let asset = &tx.postings[1];
+    assert!(asset.tags.contains(&Tag::Plain("vérification".into())));
+}
+
+#[test]
 fn rejects_blank_line_inside_transaction() {
     let input = "\
 2026-04-03
