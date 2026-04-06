@@ -87,6 +87,11 @@ fn parse_posting(line: &str) -> Result<Posting, ParseError> {
         }
     }
 
+    let has_type = tags.iter().any(|t| matches!(t, Tag::KeyValue(k, _) if k == "type"));
+    if !has_type {
+        return Err(ParseError::MissingTypeTag { line: line.to_string() });
+    }
+
     Ok(Posting { tags, amount })
 }
 

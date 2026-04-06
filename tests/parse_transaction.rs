@@ -73,3 +73,34 @@ fn rejects_duplicate_plain_tag_on_posting() {
         "expected DuplicateTag, got: {err:?}",
     );
 }
+
+#[test]
+fn rejects_posting_with_no_type_tag() {
+    let input = "\
+2026-04-03
+    food grocery +45.00
+    checking -45.00
+";
+
+    let err = parse(input).expect_err("should fail for missing type tag");
+    assert!(
+        matches!(err, ParseError::MissingTypeTag { .. }),
+        "expected MissingTypeTag, got: {err:?}",
+    );
+}
+
+#[test]
+fn rejects_posting_with_two_type_tags() {
+    let input = "\
+2026-04-03
+    food type:expense type:income +45.00
+    checking type:asset -45.00
+";
+
+    let err = parse(input).expect_err("should fail for two type tags");
+    // type:* shares the same key, so DuplicateKey fires before MissingTypeTag would.
+    assert!(
+        matches!(err, ParseError::DuplicateKey { ref key, .. } if key == "type"),
+        "expected DuplicateKey for 'type', got: {err:?}",
+    );
+}
