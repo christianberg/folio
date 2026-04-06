@@ -160,6 +160,14 @@ mock.assert_called_once();
 
 ---
 
+## Workflow
+
+- **Red/green TDD:** write a failing test first, then write the minimum code to make it pass.
+- **Atomic commits:** each commit covers one piece of functionality — tests and implementation together.
+- **Always run `cargo test` before committing.** A pre-commit hook enforces this, but run it manually too.
+
+---
+
 ## Anti-Patterns to Avoid
 
 | Anti-pattern | Preferred alternative |
