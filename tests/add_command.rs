@@ -26,7 +26,7 @@ fn run(path: &str, existing: &str, answers: impl IntoIterator<Item = &'static st
 
 fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     // Empty file — no existing vocabulary
-    let fs = Filesystem::create_null::<[(&str, &str); 0]>([]);
+    let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
     let appends = fs.track_appends();
     let output = Output::create_null();
     let stdout = output.track_stdout();
