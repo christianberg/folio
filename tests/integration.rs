@@ -80,14 +80,33 @@ mod output {
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 mod args {
-    use folio::infrastructure::{Args, Command};
+    use folio::infrastructure::Args;
+    use std::process::Command;
 
     #[test]
-    fn parses_check_subcommand() {
+    fn null_parses_check_subcommand() {
         let args = Args::create_null(["folio", "check", "ledger.folio"]);
         assert!(
-            matches!(args.command, Command::Check { ref path } if path == "ledger.folio"),
+            matches!(args.command, folio::infrastructure::Command::Check { ref path } if path == "ledger.folio"),
+
             "expected Check subcommand with correct path",
         );
+    }
+
+    #[test]
+    fn real_check_subcommand_exits_nonzero_for_missing_file() {
+        let status = Command::new(env!("CARGO_BIN_EXE_folio"))
+            .args(["check", "no-such-file.folio"])
+            .status()
+            .expect("failed to run folio binary");
+        assert!(!status.success(), "expected non-zero exit for missing file");
+    }
+
+    #[test]
+    fn real_no_args_exits_nonzero() {
+        let status = Command::new(env!("CARGO_BIN_EXE_folio"))
+            .status()
+            .expect("failed to run folio binary");
+        assert!(!status.success(), "expected non-zero exit with no subcommand");
     }
 }
