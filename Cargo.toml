@@ -17,5 +17,5 @@ tempfile = "3"
 [dependencies]
 chrono = { version = "0.4", features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
-inquire = "0.7"
+inquire = { version = "0.9", features = ["date"] }
 rust_decimal = "1"

@@ -1,3 +1,5 @@
+use chrono::NaiveDate;
+use rust_decimal::Decimal;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
@@ -17,20 +19,40 @@ impl Prompt {
         Self(Inner::Null(Mutex::new(answers.into_iter().map(|a| a.into()).collect())))
     }
 
-    /// Ask for text input with a default value shown to the user.
-    /// Returns None if the user cancelled.
-    pub fn text_with_default(&self, message: &str, default: &str) -> Option<String> {
+    /// Calendar date picker. Returns None if the user cancelled.
+    pub fn date_select(&self, message: &str, default: NaiveDate) -> Option<NaiveDate> {
         match &self.0 {
-            Inner::Real => inquire::Text::new(message).with_default(default).prompt().ok(),
+            Inner::Real => inquire::DateSelect::new(message).with_default(default).prompt().ok(),
             Inner::Null(q) => {
                 let answer = q.lock().unwrap().pop_front().unwrap_or_default();
-                Some(if answer.is_empty() { default.to_string() } else { answer })
+                if answer.is_empty() {
+                    Some(default)
+                } else {
+                    NaiveDate::parse_from_str(answer.trim(), "%Y-%m-%d").ok()
+                }
             }
         }
     }
 
-    /// Ask for text input with autocomplete suggestions shown as the user types.
-    /// Returns None if the user cancelled or entered an empty string.
+    /// Multi-select from a list of options. Returns selected items.
+    /// In null mode, a single answer encodes selections as a comma-separated string;
+    /// empty string means no selections.
+    pub fn multi_select(&self, message: &str, options: &[String]) -> Option<Vec<String>> {
+        match &self.0 {
+            Inner::Real => inquire::MultiSelect::new(message, options.to_vec()).prompt().ok(),
+            Inner::Null(q) => {
+                let answer = q.lock().unwrap().pop_front()?;
+                if answer.is_empty() {
+                    Some(vec![])
+                } else {
+                    Some(answer.split(',').map(|s| s.trim().to_string()).collect())
+                }
+            }
+        }
+    }
+
+    /// Text input with autocomplete suggestions shown as the user types.
+    /// Returns None if the user cancelled.
     pub fn text_with_completions(&self, message: &str, completions: &[String]) -> Option<String> {
         match &self.0 {
             Inner::Real => {
@@ -41,7 +63,33 @@ impl Prompt {
         }
     }
 
-    /// Ask for a yes/no confirmation. Returns None if cancelled.
+    /// Decimal number input with optional default. Retries automatically on invalid input.
+    /// Returns None if the user cancelled.
+    pub fn decimal(&self, message: &str, default: Option<Decimal>) -> Option<Decimal> {
+        match &self.0 {
+            Inner::Real => match default {
+                Some(d) => inquire::CustomType::<Decimal>::new(message)
+                    .with_error_message("Please enter a valid decimal number")
+                    .with_default(d)
+                    .prompt()
+                    .ok(),
+                None => inquire::CustomType::<Decimal>::new(message)
+                    .with_error_message("Please enter a valid decimal number")
+                    .prompt()
+                    .ok(),
+            },
+            Inner::Null(q) => {
+                let answer = q.lock().unwrap().pop_front()?;
+                if answer.trim().is_empty() {
+                    default
+                } else {
+                    answer.trim().parse().ok()
+                }
+            }
+        }
+    }
+
+    /// Yes/no confirmation. Returns None if cancelled.
     pub fn confirm(&self, message: &str, default: bool) -> Option<bool> {
         match &self.0 {
             Inner::Real => inquire::Confirm::new(message).with_default(default).prompt().ok(),
