@@ -1,6 +1,6 @@
 # Folio — Session Status
 
-## Last updated: 2026-04-06
+## Last updated: 2026-04-13
 
 ## What was done
 
@@ -13,40 +13,36 @@
 - `src/parser.rs`: parses multi-posting transactions from plain text
 - 16 passing tests
 
-**Validations implemented:**
-- Postings sum to zero; no duplicate plain/key tags; exactly one valid `type:*` per posting
-- Colon in tag value and numeric plain tags rejected (quoted tags planned later)
-- Blank lines inside a transaction rejected
-
 ### PR #3 — folio check command + infrastructure layer (merged)
 - `folio check <path>` — validates a ledger file, exits 0/1
-- `Filesystem` wrapper: `create()` / `create_null(files)`
-- `Output` wrapper: `create()` / `create_null()`; `track_stdout/stderr()` works on both real and null instances via `Weak`/`Arc` (zero cost when untracked)
-- `Args` wrapper: CLI arg parsing as infrastructure; `create_null(args)` for testable dispatch
-- `folio::run(args, fs, output)` — testable top-level entry point; `main.rs` is 3 lines
-- 32 passing tests: command tests (nullables only), narrow integration tests, null parity tests, e2e binary tests
-- CLAUDE.md updated with real patterns learned from implementation
+- `Filesystem`, `Output`, `Args` infrastructure wrappers
+- `folio::run(args, fs, output)` — testable top-level entry point
+- 32 passing tests
 
-### PR #6 — folio add command + serialiser (open, CI green)
-- `folio add <path>` — interactive transaction entry via `inquire`-based prompts
-- Tag entry shows live-filtered completions drawn from all tags in the existing ledger file
-- `src/serialiser.rs`: canonical form (tags alphabetical within each posting), used on write
-- `Prompt` infrastructure wrapper: `create()` / `create_null(answers)` — answer queue for tests
-- `Filesystem` gains `append_str` + `track_appends()` (same Weak/Arc pattern as Output)
-- 9 add command tests, 2 serialiser tests, 5 new integration tests
+### PR #6 — folio add command + serialiser (merged)
+- `folio add <path>` — interactive transaction entry with live tag completion
+- `Clock` infrastructure wrapper (replaces direct `chrono::Local` calls)
+- `Prompt` infrastructure wrapper (nullable `inquire`)
+- `Filesystem` gains `append_str` + `track_appends()`
+- `src/serialiser.rs`: canonical form (tags alphabetical), blank-line separator logic
+- Validation: whitespace in tags, duplicates, required `type:` tag, retry on bad input
+- UX: balance-remaining message, default balancing amount, forced balance before done
+- 65 passing tests total
+- CLAUDE.md updated: TDD workflow, atomic commits, `cargo test` before committing
+- Pre-commit git hook installed (runs `cargo test`)
 
 ## What's next
 
-Milestone decisions made this session:
-- **Transit sugar deferred** — will add once core system is functional
-- **Auto-balance posting deferred** — less relevant with interactive entry flow
+Milestone 1 (remaining — deferred):
+- Transit sugar expansion
+- Auto-balance posting
 
-Milestone 2 (remaining):
+Milestone 2:
 - Query engine: tag filter evaluation (AND, AND NOT, key wildcard), date range filtering
-- Report types: ledger, balance sheet, P&L
+- Report types: ledger, balance sheet, P&L, group-by-time, breakdown, anomaly search
 
 Later milestones: prediction engine (Naïve Bayes), full TUI (ratatui), bank import, reporting CLI.
 
 ## Blockers
 
-None. PR #6 awaiting review/merge.
+None.
