@@ -1,4 +1,3 @@
-use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::HashSet;
 
@@ -29,7 +28,7 @@ pub fn run(path: &str, clock: &Clock, fs: &Filesystem, prompt: &Prompt, output: 
         }
     };
 
-    let date = match ask_date(clock.today(), prompt, output) {
+    let date = match prompt.date_select("Date", clock.today()) {
         Some(d) => d,
         None => return 0,
     };
@@ -62,19 +61,6 @@ fn append_prefix(existing: &str) -> &'static str {
     }
 }
 
-fn ask_date(today: NaiveDate, prompt: &Prompt, output: &Output) -> Option<NaiveDate> {
-    loop {
-        let input = prompt.text_with_default("Date", &today.to_string())?;
-        match NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d") {
-            Ok(d) => return Some(d),
-            Err(_) => output.eprintln(&format!(
-                "  Invalid date '{}', expected YYYY-MM-DD",
-                input.trim()
-            )),
-        }
-    }
-}
-
 fn ask_postings(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Option<Vec<Posting>> {
     let mut postings: Vec<Posting> = Vec::new();
     loop {
@@ -85,7 +71,7 @@ fn ask_postings(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
 
         let current_sum: Decimal = postings.iter().map(|p| p.amount).sum();
         let balance_default = if postings.is_empty() { None } else { Some(-current_sum) };
-        let amount = ask_amount(balance_default, prompt, output)?;
+        let amount = prompt.decimal("  Amount", balance_default)?;
         postings.push(Posting { tags, amount });
 
         let new_sum: Decimal = postings.iter().map(|p| p.amount).sum();
@@ -107,6 +93,24 @@ fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Option<V
     let mut seen_plain: HashSet<String> = HashSet::new();
     let mut seen_keys: HashSet<String> = HashSet::new();
 
+    // Phase 1: multi-select from existing vocabulary (skip if no vocabulary)
+    if !vocabulary.is_empty() {
+        let selected = prompt.multi_select("  Tags (select existing)", vocabulary)?;
+        for s in &selected {
+            match parse_tag(s) {
+                Ok(tag) => {
+                    match &tag {
+                        Tag::Plain(name) => { seen_plain.insert(name.clone()); }
+                        Tag::KeyValue(key, _) => { seen_keys.insert(key.clone()); }
+                    }
+                    tags.push(tag);
+                }
+                Err(_) => {} // vocabulary tags are already valid; skip silently
+            }
+        }
+    }
+
+    // Phase 2: loop for new tags
     loop {
         let input = prompt.text_with_completions("  Tag (empty to finish)", vocabulary)?;
         let trimmed = input.trim();
@@ -148,22 +152,6 @@ fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Option<V
         tags.push(tag);
     }
     Some(tags)
-}
-
-fn ask_amount(default: Option<Decimal>, prompt: &Prompt, output: &Output) -> Option<Decimal> {
-    loop {
-        let input = match default {
-            Some(d) => prompt.text_with_default("  Amount", &d.to_string())?,
-            None => prompt.text_with_completions("  Amount", &[])?,
-        };
-        match input.trim().parse::<Decimal>() {
-            Ok(amount) => return Some(amount),
-            Err(_) => output.eprintln(&format!(
-                "  Invalid amount '{}', expected a decimal number",
-                input.trim()
-            )),
-        }
-    }
 }
 
 fn parse_tag(s: &str) -> Result<Tag, ParseError> {

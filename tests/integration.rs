@@ -125,21 +125,66 @@ mod clock {
 // ── Prompt ────────────────────────────────────────────────────────────────────
 
 mod prompt {
+    use chrono::NaiveDate;
     use folio::infrastructure::Prompt;
+    use rust_decimal::Decimal;
 
     // Prompt::create() wraps inquire which requires a TTY — too thin to narrow-test.
     // The null instance behaviour is fully exercised here.
 
     #[test]
-    fn null_text_with_default_returns_provided_answer() {
-        let p = Prompt::create_null(["hello"]);
-        assert_eq!(p.text_with_default("Q", "default"), Some("hello".to_string()));
+    fn null_date_select_returns_parsed_date() {
+        let p = Prompt::create_null(["2026-03-15"]);
+        let default = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        assert_eq!(p.date_select("Date", default), NaiveDate::from_ymd_opt(2026, 3, 15));
     }
 
     #[test]
-    fn null_text_with_default_uses_default_on_empty_answer() {
+    fn null_date_select_uses_default_on_empty_answer() {
         let p = Prompt::create_null([""]);
-        assert_eq!(p.text_with_default("Q", "fallback"), Some("fallback".to_string()));
+        let default = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        assert_eq!(p.date_select("Date", default), Some(default));
+    }
+
+    #[test]
+    fn null_multi_select_returns_parsed_selections() {
+        let p = Prompt::create_null(["food, type:expense"]);
+        let opts = vec!["food".to_string(), "type:expense".to_string(), "type:asset".to_string()];
+        assert_eq!(
+            p.multi_select("Tags", &opts),
+            Some(vec!["food".to_string(), "type:expense".to_string()])
+        );
+    }
+
+    #[test]
+    fn null_multi_select_returns_empty_vec_on_empty_answer() {
+        let p = Prompt::create_null([""]);
+        assert_eq!(p.multi_select("Tags", &[]), Some(vec![]));
+    }
+
+    #[test]
+    fn null_multi_select_returns_none_when_queue_empty() {
+        let p = Prompt::create_null(std::iter::empty::<&str>());
+        assert_eq!(p.multi_select("Tags", &[]), None);
+    }
+
+    #[test]
+    fn null_decimal_returns_parsed_value() {
+        let p = Prompt::create_null(["42.50"]);
+        assert_eq!(p.decimal("Amount", None), Some(Decimal::new(4250, 2)));
+    }
+
+    #[test]
+    fn null_decimal_uses_default_on_empty_answer() {
+        let p = Prompt::create_null([""]);
+        let default = Decimal::new(100, 0);
+        assert_eq!(p.decimal("Amount", Some(default)), Some(default));
+    }
+
+    #[test]
+    fn null_decimal_returns_none_when_queue_empty() {
+        let p = Prompt::create_null(std::iter::empty::<&str>());
+        assert_eq!(p.decimal("Amount", None), None);
     }
 
     #[test]
