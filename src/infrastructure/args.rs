@@ -11,6 +11,8 @@ pub struct Args {
 pub enum Command {
     /// Validate a ledger file
     Check { path: String },
+    /// Interactively add a transaction
+    Add { path: String },
 }
 
 impl Args {

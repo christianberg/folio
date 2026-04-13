@@ -37,6 +37,35 @@ mod filesystem {
         let err = fs_null.read_to_string("missing.folio").unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
     }
+
+    #[test]
+    fn appends_to_real_file() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let path = f.path().to_str().unwrap();
+
+        let fs = Filesystem::create();
+        fs.append_str(path, "first\n").unwrap();
+        fs.append_str(path, "second\n").unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "first\nsecond\n");
+    }
+
+    #[test]
+    fn null_append_is_readable_via_read_to_string() {
+        let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
+        fs.append_str("out.folio", "hello\n").unwrap();
+        assert_eq!(fs.read_to_string("out.folio").unwrap(), "hello\n");
+    }
+
+    #[test]
+    fn track_appends_captures_path_and_content() {
+        let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
+        let tracker = fs.track_appends();
+        fs.append_str("a.folio", "tx1\n").unwrap();
+        fs.append_str("b.folio", "tx2\n").unwrap();
+        let appends = tracker.all();
+        assert_eq!(appends[0], ("a.folio".to_string(), "tx1\n".to_string()));
+        assert_eq!(appends[1], ("b.folio".to_string(), "tx2\n".to_string()));
+    }
 }
 
 // ── Output ────────────────────────────────────────────────────────────────────
@@ -77,6 +106,74 @@ mod output {
     }
 }
 
+// ── Clock ─────────────────────────────────────────────────────────────────────
+
+mod clock {
+    use chrono::NaiveDate;
+    use folio::infrastructure::Clock;
+
+    // Clock::create() delegates to chrono::Local::now() — too thin to narrow-test.
+
+    #[test]
+    fn null_returns_configured_date() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let clock = Clock::create_null(date);
+        assert_eq!(clock.today(), date);
+    }
+}
+
+// ── Prompt ────────────────────────────────────────────────────────────────────
+
+mod prompt {
+    use folio::infrastructure::Prompt;
+
+    // Prompt::create() wraps inquire which requires a TTY — too thin to narrow-test.
+    // The null instance behaviour is fully exercised here.
+
+    #[test]
+    fn null_text_with_default_returns_provided_answer() {
+        let p = Prompt::create_null(["hello"]);
+        assert_eq!(p.text_with_default("Q", "default"), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_default_uses_default_on_empty_answer() {
+        let p = Prompt::create_null([""]);
+        assert_eq!(p.text_with_default("Q", "fallback"), Some("fallback".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_completions_returns_provided_answer() {
+        let p = Prompt::create_null(["type:expense"]);
+        let opts = vec!["type:expense".to_string(), "type:asset".to_string()];
+        assert_eq!(p.text_with_completions("Tag", &opts), Some("type:expense".to_string()));
+    }
+
+    #[test]
+    fn null_text_with_completions_returns_none_when_queue_empty() {
+        let p = Prompt::create_null(std::iter::empty::<&str>());
+        assert_eq!(p.text_with_completions("Tag", &[]), None);
+    }
+
+    #[test]
+    fn null_confirm_parses_y_as_true() {
+        let p = Prompt::create_null(["y"]);
+        assert_eq!(p.confirm("Continue?", false), Some(true));
+    }
+
+    #[test]
+    fn null_confirm_parses_n_as_false() {
+        let p = Prompt::create_null(["n"]);
+        assert_eq!(p.confirm("Continue?", true), Some(false));
+    }
+
+    #[test]
+    fn null_confirm_returns_none_when_queue_empty() {
+        let p = Prompt::create_null(std::iter::empty::<&str>());
+        assert_eq!(p.confirm("Continue?", false), None);
+    }
+}
+
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 mod args {
@@ -91,6 +188,15 @@ mod args {
         assert!(
             matches!(args.command, folio::infrastructure::Command::Check { ref path } if path == "ledger.folio"),
             "expected Check subcommand with correct path",
+        );
+    }
+
+    #[test]
+    fn null_parses_add_subcommand() {
+        let args = Args::create_null(["folio", "add", "ledger.folio"]);
+        assert!(
+            matches!(args.command, folio::infrastructure::Command::Add { ref path } if path == "ledger.folio"),
+            "expected Add subcommand with correct path",
         );
     }
 }
