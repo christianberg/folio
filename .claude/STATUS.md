@@ -1,6 +1,6 @@
 # Folio — Session Status
 
-## Last updated: 2026-04-13
+## Last updated: 2026-04-13 (session 2)
 
 ## What was done
 
@@ -30,6 +30,12 @@
 - 65 passing tests total
 - CLAUDE.md updated: TDD workflow, atomic commits, `cargo test` before committing
 - Pre-commit git hook installed (runs `cargo test`)
+
+### PR #9 — Upgrade inquire to 0.9.4 (open)
+- `Prompt` wrapper: `date_select` (DateSelect), `multi_select` (MultiSelect), `decimal` (CustomType<Decimal>); removed `text_with_default`
+- `add.rs`: two-phase tag entry — MultiSelect from vocabulary then free-text completions loop; date/amount simplified
+- Tests updated: `SIMPLE_EXPENSE_WITH_VOCAB` for vocab path; removed `retries_on_invalid_{date,amount}` (retry now inside inquire)
+- 69 passing tests
 
 ## What's next
 
