@@ -151,7 +151,7 @@ mod prompt {
         let p = Prompt::create_null(["food, type:expense"]);
         let opts = vec!["food".to_string(), "type:expense".to_string(), "type:asset".to_string()];
         assert_eq!(
-            p.multi_select("Tags", &opts, &[]),
+            p.multi_select("Tags", &opts, None),
             Some(vec!["food".to_string(), "type:expense".to_string()])
         );
     }
@@ -159,22 +159,25 @@ mod prompt {
     #[test]
     fn null_multi_select_returns_empty_vec_on_empty_answer() {
         let p = Prompt::create_null([""]);
-        assert_eq!(p.multi_select("Tags", &[], &[]), Some(vec![]));
+        assert_eq!(p.multi_select("Tags", &[], None), Some(vec![]));
     }
 
     #[test]
-    fn null_multi_select_ignores_preselected_uses_queue() {
-        // In null mode, preselected doesn't affect the answer — the queue drives it.
-        let p = Prompt::create_null(["type:expense"]);
+    fn null_multi_select_ignores_validator_uses_queue() {
+        // In null mode, the validator is ignored — the queue drives the answer.
+        use folio::commands::add::type_tag_validator;
+        use folio::infrastructure::MultiSelectValidator;
+        use std::sync::Arc;
+        let p = Prompt::create_null(["food"]); // no type: tag — validator would reject this in real mode
         let opts = vec!["food".to_string(), "type:expense".to_string()];
-        let pre = vec!["food".to_string()];
-        assert_eq!(p.multi_select("Tags", &opts, &pre), Some(vec!["type:expense".to_string()]));
+        let v: MultiSelectValidator = Arc::new(type_tag_validator);
+        assert_eq!(p.multi_select("Tags", &opts, Some(v)), Some(vec!["food".to_string()]));
     }
 
     #[test]
     fn null_multi_select_returns_none_when_queue_empty() {
         let p = Prompt::create_null(std::iter::empty::<&str>());
-        assert_eq!(p.multi_select("Tags", &[], &[]), None);
+        assert_eq!(p.multi_select("Tags", &[], None), None);
     }
 
     #[test]
