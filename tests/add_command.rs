@@ -111,15 +111,18 @@ fn run_ask_tags(vocabulary: &[&str], answers: &[&str]) -> TagsResult {
 
 #[test]
 fn ask_tags_requires_type_tag_in_phase_1() {
-    // Selecting no type tag re-prompts phase 1; second attempt includes one.
+    // Selecting no type tag re-prompts phase 1; previously selected tags are kept.
     let vocab = &["type:expense", "type:asset", "food"];
     let r = run_ask_tags(vocab, &[
-        "food",           // phase 1, attempt 1: no type → error
+        "food",           // phase 1, attempt 1: no type → error, but food is kept
         "type:expense",   // phase 1, attempt 2: type selected
         "",               // phase 2: no additional tags
     ]);
-    assert!(r.tags.is_some());
+    let tags = r.tags.unwrap();
     assert!(r.stderr.iter().any(|l| l.contains("type:")));
+    // Both tags from both attempts should be present
+    assert!(tags.contains(&Tag::Plain("food".to_string())));
+    assert!(tags.contains(&Tag::KeyValue("type".to_string(), "expense".to_string())));
 }
 
 #[test]
