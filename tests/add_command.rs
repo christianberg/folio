@@ -230,6 +230,16 @@ const EXISTING_FILE: &str =
     "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
 
 #[test]
+fn smoke_displays_transaction_before_saving() {
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
+    assert_eq!(r.exit_code, 0);
+    // The serialised transaction must appear in stdout so the user can verify it
+    assert!(r.stdout.iter().any(|l| l.contains("2026-04-06")), "date not displayed");
+    assert!(r.stdout.iter().any(|l| l.contains("food")), "tags not displayed");
+    assert!(r.stdout.iter().any(|l| l.contains("45.00")), "amount not displayed");
+}
+
+#[test]
 fn smoke_saves_balanced_transaction() {
     let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
