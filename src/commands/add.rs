@@ -92,8 +92,8 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
     let mut seen_plain: HashSet<String> = HashSet::new();
     let mut seen_keys: HashSet<String> = HashSet::new();
 
-    // Phase 1: multi-select from existing vocabulary (skip if no vocabulary)
-    if !vocabulary.is_empty() {
+    // Phase 1: multi-select — loop until a type: tag is selected
+    loop {
         let selected = prompt.multi_select("  Tags (select existing)", vocabulary)?;
         for s in &selected {
             match parse_tag(s) {
@@ -104,50 +104,40 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
                     }
                     tags.push(tag);
                 }
-                Err(_) => {} // vocabulary tags are already valid; skip silently
+                Err(_) => {}
             }
         }
-    }
-
-    // Phase 2: loop for new tags
-    loop {
-        let input = prompt.text_with_completions("  Tag (empty to finish)", vocabulary)?;
-        let trimmed = input.trim();
-
-        if trimmed.is_empty() {
-            let has_type = tags.iter().any(|t| matches!(t, Tag::KeyValue(k, _) if k == "type"));
-            if !has_type {
-                output.eprintln(
-                    "  A type: tag is required \
-                     (type:asset, type:liability, type:equity, type:income, or type:expense)",
-                );
-                continue;
-            }
+        let has_type = tags.iter().any(|t| matches!(t, Tag::KeyValue(k, _) if k == "type"));
+        if has_type {
             break;
         }
+        output.eprintln(
+            "  A type: tag is required \
+             (type:asset, type:liability, type:equity, type:income, or type:expense)",
+        );
+        tags.clear();
+        seen_plain.clear();
+        seen_keys.clear();
+    }
 
-        if trimmed.contains(char::is_whitespace) {
-            output.eprintln("  Tags cannot contain whitespace");
-            continue;
-        }
-
-        let tag = match parse_tag(trimmed) {
+    // Phase 2: single text input — space-separated new tags
+    let input = prompt.text("  Additional tags (space-separated, empty for none)")?;
+    for word in input.split_whitespace() {
+        let tag = match parse_tag(word) {
             Ok(t) => t,
             Err(e) => {
-                output.eprintln(&format!("  Invalid tag: {e}"));
+                output.eprintln(&format!("  Invalid tag '{word}': {e}"));
                 continue;
             }
         };
-
         let duplicate = match &tag {
             Tag::Plain(name) => !seen_plain.insert(name.clone()),
             Tag::KeyValue(key, _) => !seen_keys.insert(key.clone()),
         };
         if duplicate {
-            output.eprintln(&format!("  Duplicate tag '{trimmed}', already added"));
+            output.eprintln(&format!("  Duplicate tag '{word}', already added"));
             continue;
         }
-
         tags.push(tag);
     }
     Some(tags)
