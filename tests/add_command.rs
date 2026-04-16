@@ -230,6 +230,32 @@ const EXISTING_FILE: &str =
     "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
 
 #[test]
+fn smoke_records_two_transactions_in_one_session() {
+    let r = run_new([
+        // Transaction 1
+        "2026-04-06",
+        "",  "food", "type:expense", "", "45.00",
+        "",  "checking", "type:asset", "", "", "n",
+        // Transaction 2
+        "2026-04-07",
+        "",  "coffee", "type:expense", "", "3.50",
+        "",  "checking", "type:asset", "", "", "n",
+        // Ctrl-D at date prompt (queue exhausted)
+    ]);
+    assert_eq!(r.exit_code, 0);
+    assert!(r.appended.contains("2026-04-06"), "first transaction missing");
+    assert!(r.appended.contains("2026-04-07"), "second transaction missing");
+}
+
+#[test]
+fn smoke_ctrl_d_at_date_exits_cleanly() {
+    // Queue runs out immediately at the first date prompt — should exit 0 with nothing saved.
+    let r = run_new([]);
+    assert_eq!(r.exit_code, 0);
+    assert!(r.appended.is_empty());
+}
+
+#[test]
 fn smoke_displays_transaction_before_saving() {
     let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
