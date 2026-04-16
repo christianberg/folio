@@ -38,30 +38,40 @@ fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
 
-// Two-posting expense on a new file (no vocabulary → no multi_select phase).
+// Two-posting expense. The 5 default type tags are always in vocabulary, so
+// multi_select fires even for a new file. Each posting needs a multi_select answer.
 // After posting 1 (unbalanced) the loop continues automatically.
 // Posting 2 accepts the default balancing amount with "".
 const SIMPLE_EXPENSE: &[&str] = &[
     "2026-04-06",         // date_select
+    "",                   // multi_select posting 1 (choose nothing from default vocab)
     "food", "type:expense", "",  // phase-2 tags for posting 1
     "45.00",              // decimal
+    "",                   // multi_select posting 2
     "checking", "type:asset", "",  // phase-2 tags for posting 2
     "",                   // decimal: accept default -45.00
     "n",                  // confirm: no more postings
 ];
 
-// Same transaction against a file that already has content, so vocabulary is non-empty.
-// Each posting needs an extra answer for the multi_select phase (empty = no pre-existing tags chosen).
-const SIMPLE_EXPENSE_WITH_VOCAB: &[&str] = &[
-    "2026-04-06",         // date_select
-    "",                   // multi_select posting 1 (choose nothing from vocab)
-    "food", "type:expense", "",  // phase-2 tags for posting 1
-    "45.00",              // decimal
-    "",                   // multi_select posting 2 (choose nothing from vocab)
-    "checking", "type:asset", "",  // phase-2 tags for posting 2
-    "",                   // decimal: accept default -45.00
-    "n",                  // confirm: no more postings
-];
+#[test]
+fn default_type_tags_available_for_new_file() {
+    // The 5 type tags must appear in multi_select even before any transaction has been saved.
+    // We verify by pre-selecting two tags via the comma-encoded multi_select answer.
+    // If multi_select fires: "type:expense,food" → [KV("type","expense"), Plain("food")]
+    // If no multi_select fires: consumed by phase-2 as KV("type","expense,food") — one bad tag
+    let r = run_new([
+        "2026-04-06",
+        "type:expense,food",  // multi_select posting 1: selects both in one answer
+        "",                   // phase-2: immediately finish (both tags already selected)
+        "45.00",
+        "",                   // multi_select posting 2: nothing from vocab
+        "type:asset", "checking", "",
+        "", "n",
+    ]);
+    assert_eq!(r.exit_code, 0);
+    // Both must appear as separate tags — proves multi_select fired and split on comma
+    assert!(r.appended.contains("food type:expense"), "type tags must be selectable from multi_select on new files");
+}
 
 #[test]
 fn exits_zero_for_balanced_transaction() {
@@ -160,8 +170,10 @@ fn rejects_duplicate_key_tags() {
 fn rejects_tag_with_whitespace() {
     let r = run_new([
         "2026-04-06",
-        "foo bar", "food", "type:expense", "",
+        "",                                      // multi_select posting 1: nothing
+        "foo bar", "food", "type:expense", "",   // whitespace tag → error; then ok
         "45.00",
+        "",                                      // multi_select posting 2
         "type:asset", "checking", "", "", "n",
     ]);
     assert_eq!(r.exit_code, 0);
@@ -179,7 +191,7 @@ fn no_leading_newline_for_new_file() {
 #[test]
 fn separates_with_blank_line_when_file_ends_with_newline() {
     let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
-    let r = run("ledger.folio", existing, SIMPLE_EXPENSE_WITH_VOCAB.iter().copied());
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.starts_with('\n'), "should prepend blank line separator");
 }
@@ -187,7 +199,7 @@ fn separates_with_blank_line_when_file_ends_with_newline() {
 #[test]
 fn no_extra_blank_line_when_file_already_ends_with_blank_line() {
     let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n\n";
-    let r = run("ledger.folio", existing, SIMPLE_EXPENSE_WITH_VOCAB.iter().copied());
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(!r.appended.starts_with('\n'), "should not add extra blank line");
 }
@@ -195,7 +207,7 @@ fn no_extra_blank_line_when_file_already_ends_with_blank_line() {
 #[test]
 fn handles_file_without_trailing_newline() {
     let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00";
-    let r = run("ledger.folio", existing, SIMPLE_EXPENSE_WITH_VOCAB.iter().copied());
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.starts_with("\n\n"), "should add newline then blank line");
 }
@@ -203,7 +215,7 @@ fn handles_file_without_trailing_newline() {
 #[test]
 fn appends_only_new_content_not_whole_file() {
     let existing = "2026-01-01\n    salary type:income 3000.00\n    checking type:asset -3000.00\n";
-    let r = run("ledger.folio", existing, SIMPLE_EXPENSE_WITH_VOCAB.iter().copied());
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(!r.appended.contains("salary"), "appended content should not include existing transactions");
 }
