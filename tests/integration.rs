@@ -151,7 +151,7 @@ mod prompt {
         let p = Prompt::create_null(["food, type:expense"]);
         let opts = vec!["food".to_string(), "type:expense".to_string(), "type:asset".to_string()];
         assert_eq!(
-            p.multi_select("Tags", &opts),
+            p.multi_select("Tags", &opts, &[]),
             Some(vec!["food".to_string(), "type:expense".to_string()])
         );
     }
@@ -159,13 +159,22 @@ mod prompt {
     #[test]
     fn null_multi_select_returns_empty_vec_on_empty_answer() {
         let p = Prompt::create_null([""]);
-        assert_eq!(p.multi_select("Tags", &[]), Some(vec![]));
+        assert_eq!(p.multi_select("Tags", &[], &[]), Some(vec![]));
+    }
+
+    #[test]
+    fn null_multi_select_ignores_preselected_uses_queue() {
+        // In null mode, preselected doesn't affect the answer — the queue drives it.
+        let p = Prompt::create_null(["type:expense"]);
+        let opts = vec!["food".to_string(), "type:expense".to_string()];
+        let pre = vec!["food".to_string()];
+        assert_eq!(p.multi_select("Tags", &opts, &pre), Some(vec!["type:expense".to_string()]));
     }
 
     #[test]
     fn null_multi_select_returns_none_when_queue_empty() {
         let p = Prompt::create_null(std::iter::empty::<&str>());
-        assert_eq!(p.multi_select("Tags", &[]), None);
+        assert_eq!(p.multi_select("Tags", &[], &[]), None);
     }
 
     #[test]
