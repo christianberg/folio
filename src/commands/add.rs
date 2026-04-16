@@ -7,44 +7,46 @@ use crate::types::{Ledger, Posting, Tag, Transaction};
 use crate::{parser, ParseError};
 
 pub fn run(path: &str, clock: &Clock, fs: &Filesystem, prompt: &Prompt, output: &Output) -> i32 {
-    let existing_content = match fs.read_to_string(path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => {
-            output.eprintln(&format!("Error reading {path}: {e}"));
+    loop {
+        let existing_content = match fs.read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => {
+                output.eprintln(&format!("Error reading {path}: {e}"));
+                return 1;
+            }
+        };
+
+        let vocabulary = match parser::parse(&existing_content) {
+            Ok(ledger) => tag_vocabulary(&ledger),
+            Err(e) => {
+                output.eprintln(&format!("Error parsing {path}: {e}"));
+                return 1;
+            }
+        };
+
+        let date = match prompt.date_select("Date", clock.today()) {
+            Some(d) => d,
+            None => break,
+        };
+
+        let postings = match ask_postings(&vocabulary, prompt, output) {
+            Some(p) => p,
+            None => break,
+        };
+
+        let transaction = Transaction { date, postings };
+        let serialised = serialiser::serialise(&transaction);
+        let prefix = append_prefix(&existing_content);
+
+        if let Err(e) = fs.append_str(path, &format!("{prefix}{serialised}\n")) {
+            output.eprintln(&format!("Error writing {path}: {e}"));
             return 1;
         }
-    };
 
-    let vocabulary = match parser::parse(&existing_content) {
-        Ok(ledger) => tag_vocabulary(&ledger),
-        Err(e) => {
-            output.eprintln(&format!("Error parsing {path}: {e}"));
-            return 1;
-        }
-    };
-
-    let date = match prompt.date_select("Date", clock.today()) {
-        Some(d) => d,
-        None => return 0,
-    };
-
-    let postings = match ask_postings(&vocabulary, prompt, output) {
-        Some(p) => p,
-        None => return 0,
-    };
-
-    let transaction = Transaction { date, postings };
-    let serialised = serialiser::serialise(&transaction);
-    let prefix = append_prefix(&existing_content);
-
-    if let Err(e) = fs.append_str(path, &format!("{prefix}{serialised}\n")) {
-        output.eprintln(&format!("Error writing {path}: {e}"));
-        return 1;
+        output.println(&serialised);
+        output.println("Transaction saved.");
     }
-
-    output.println(&serialised);
-    output.println("Transaction saved.");
     0
 }
 
