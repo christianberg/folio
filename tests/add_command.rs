@@ -27,9 +27,27 @@ mod vocabulary {
 ";
 
     #[test]
-    fn empty_ledger_returns_empty_vocabulary() {
+    fn always_includes_five_default_type_tags() {
         let ledger = parse("").unwrap();
-        assert!(tag_vocabulary(&ledger).is_empty());
+        let vocab = tag_vocabulary(&ledger);
+        for tag in &["type:asset", "type:equity", "type:expense", "type:income", "type:liability"] {
+            assert!(vocab.contains(&tag.to_string()), "missing {tag}");
+        }
+    }
+
+    #[test]
+    fn default_type_tags_not_duplicated_when_already_in_file() {
+        let ledger = parse(SINGLE_EXPENSE).unwrap(); // contains type:expense and type:asset
+        let vocab = tag_vocabulary(&ledger);
+        assert_eq!(vocab.iter().filter(|t| t.as_str() == "type:expense").count(), 1);
+        assert_eq!(vocab.iter().filter(|t| t.as_str() == "type:asset").count(), 1);
+    }
+
+    #[test]
+    fn empty_ledger_vocabulary_contains_only_defaults() {
+        let ledger = parse("").unwrap();
+        let vocab = tag_vocabulary(&ledger);
+        assert_eq!(vocab.len(), 5);
     }
 
     #[test]
@@ -180,7 +198,8 @@ fn run(path: &str, existing: &str, answers: impl IntoIterator<Item = &'static st
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
 
-/// Run `folio add` against a new (empty) file. No vocabulary → no multi_select phase.
+/// Run `folio add` against a new (empty) file. Default type tags are always in vocabulary,
+/// so each posting still needs a multi_select answer.
 fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     let fs = Filesystem::create_null(std::iter::empty::<(&str, &str)>());
     let appends = fs.track_appends();
@@ -194,22 +213,11 @@ fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
 
-// Minimal two-posting answer sequence for a new (empty) file.
-// No multi_select phase because vocabulary is empty.
-const SIMPLE_EXPENSE_NEW: &[&str] = &[
+// Minimal two-posting answer sequence. Vocabulary is always non-empty (defaults),
+// so every posting needs a multi_select answer even for a new file.
+const SIMPLE_EXPENSE: &[&str] = &[
     "2026-04-06",         // date_select
-    "food", "type:expense", "",  // tags for posting 1
-    "45.00",              // amount
-    "checking", "type:asset", "",  // tags for posting 2
-    "",                   // amount: accept default -45.00
-    "n",                  // no more postings
-];
-
-// Same transaction against a file with existing content.
-// Each posting needs an empty multi_select answer (no pre-selection from vocab).
-const SIMPLE_EXPENSE_EXISTING: &[&str] = &[
-    "2026-04-06",         // date_select
-    "",                   // multi_select posting 1
+    "",                   // multi_select posting 1 (nothing pre-selected)
     "food", "type:expense", "",  // tags for posting 1
     "45.00",              // amount
     "",                   // multi_select posting 2
@@ -223,7 +231,7 @@ const EXISTING_FILE: &str =
 
 #[test]
 fn smoke_saves_balanced_transaction() {
-    let r = run_new(SIMPLE_EXPENSE_NEW.iter().copied());
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(r.stdout.iter().any(|l| l.contains("saved")));
     assert!(r.appended.contains("2026-04-06"));
@@ -233,26 +241,26 @@ fn smoke_saves_balanced_transaction() {
 
 #[test]
 fn smoke_uses_default_date() {
-    let r = run_new(["", "food", "type:expense", "", "45.00", "checking", "type:asset", "", "", "n"]);
+    let r = run_new(["", "", "food", "type:expense", "", "45.00", "", "checking", "type:asset", "", "", "n"]);
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.contains("2026-04-06"));
 }
 
 #[test]
 fn smoke_shows_balance_remaining_and_forces_another_posting() {
-    let r = run_new(SIMPLE_EXPENSE_NEW.iter().copied());
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert!(r.stdout.iter().any(|l| l.contains("Balance remaining")));
 }
 
 #[test]
 fn smoke_default_amount_balances_transaction() {
-    let r = run_new(SIMPLE_EXPENSE_NEW.iter().copied());
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert!(r.appended.contains("-45.00"));
 }
 
 #[test]
 fn smoke_exits_one_for_unparseable_file() {
-    let r = run("ledger.folio", "not valid", SIMPLE_EXPENSE_EXISTING.iter().copied());
+    let r = run("ledger.folio", "not valid", SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 1);
     assert!(r.stderr.iter().any(|l| l.contains("Error")));
 }
@@ -261,13 +269,13 @@ fn smoke_exits_one_for_unparseable_file() {
 
 #[test]
 fn no_leading_newline_for_new_file() {
-    let r = run_new(SIMPLE_EXPENSE_NEW.iter().copied());
+    let r = run_new(SIMPLE_EXPENSE.iter().copied());
     assert!(!r.appended.starts_with('\n'));
 }
 
 #[test]
 fn separates_with_blank_line_when_file_ends_with_newline() {
-    let r = run("ledger.folio", EXISTING_FILE, SIMPLE_EXPENSE_EXISTING.iter().copied());
+    let r = run("ledger.folio", EXISTING_FILE, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.starts_with('\n'));
 }
@@ -275,7 +283,7 @@ fn separates_with_blank_line_when_file_ends_with_newline() {
 #[test]
 fn no_extra_blank_line_when_file_already_ends_with_blank_line() {
     let existing = format!("{EXISTING_FILE}\n");
-    let r = run("ledger.folio", &existing, SIMPLE_EXPENSE_EXISTING.iter().copied());
+    let r = run("ledger.folio", &existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(!r.appended.starts_with('\n'));
 }
@@ -283,14 +291,14 @@ fn no_extra_blank_line_when_file_already_ends_with_blank_line() {
 #[test]
 fn handles_file_without_trailing_newline() {
     let existing = EXISTING_FILE.trim_end_matches('\n');
-    let r = run("ledger.folio", existing, SIMPLE_EXPENSE_EXISTING.iter().copied());
+    let r = run("ledger.folio", existing, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.starts_with("\n\n"));
 }
 
 #[test]
 fn appends_only_new_content_not_whole_file() {
-    let r = run("ledger.folio", EXISTING_FILE, SIMPLE_EXPENSE_EXISTING.iter().copied());
+    let r = run("ledger.folio", EXISTING_FILE, SIMPLE_EXPENSE.iter().copied());
     assert_eq!(r.exit_code, 0);
     assert!(!r.appended.contains("salary"));
 }
