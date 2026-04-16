@@ -43,6 +43,7 @@ pub fn run(path: &str, clock: &Clock, fs: &Filesystem, prompt: &Prompt, output: 
         return 1;
     }
 
+    output.println(&serialised);
     output.println("Transaction saved.");
     0
 }
