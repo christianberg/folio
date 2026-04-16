@@ -106,64 +106,75 @@ fn run_ask_tags(vocabulary: &[&str], answers: &[&str]) -> TagsResult {
     TagsResult { tags, stderr: stderr.all() }
 }
 
+// Phase 1: multi_select — answers are comma-encoded selections.
+// Phase 2: single text answer — space-separated new tags (or "" for none).
+
 #[test]
-fn ask_tags_requires_type_tag() {
-    let r = run_ask_tags(
-        &[],
-        &["food", "", "type:expense", ""], // empty without type → error; then type added
-    );
+fn ask_tags_requires_type_tag_in_phase_1() {
+    // Selecting no type tag re-prompts phase 1; second attempt includes one.
+    let vocab = &["type:expense", "type:asset", "food"];
+    let r = run_ask_tags(vocab, &[
+        "food",           // phase 1, attempt 1: no type → error
+        "type:expense",   // phase 1, attempt 2: type selected
+        "",               // phase 2: no additional tags
+    ]);
     assert!(r.tags.is_some());
     assert!(r.stderr.iter().any(|l| l.contains("type:")));
 }
 
 #[test]
-fn ask_tags_rejects_duplicate_plain_tags() {
-    let r = run_ask_tags(&[], &["food", "food", "type:expense", ""]);
-    assert!(r.tags.is_some());
-    assert!(r.stderr.iter().any(|l| l.contains("Duplicate")));
-}
-
-#[test]
-fn ask_tags_rejects_duplicate_key_tags() {
-    let r = run_ask_tags(&[], &["type:expense", "type:asset", "food", ""]);
-    assert!(r.tags.is_some());
-    assert!(r.stderr.iter().any(|l| l.contains("Duplicate")));
-}
-
-#[test]
-fn ask_tags_rejects_whitespace_in_tag() {
-    let r = run_ask_tags(&[], &["foo bar", "food", "type:expense", ""]);
-    assert!(r.tags.is_some());
-    assert!(r.stderr.iter().any(|l| l.contains("whitespace")));
-}
-
-#[test]
 fn ask_tags_collects_valid_tags() {
-    let r = run_ask_tags(&[], &["food", "type:expense", ""]);
+    let vocab = &["type:expense"];
+    let r = run_ask_tags(vocab, &[
+        "type:expense", // phase 1
+        "food",         // phase 2: one new tag
+    ]);
     let tags = r.tags.unwrap();
     assert!(tags.contains(&Tag::Plain("food".to_string())));
     assert!(tags.contains(&Tag::KeyValue("type".to_string(), "expense".to_string())));
 }
 
 #[test]
-fn ask_tags_multi_select_pre_fills_from_vocabulary() {
-    // Vocabulary is non-empty → multi_select fires first.
-    // Comma-encoded answer selects two tags simultaneously; both must appear in output.
-    // (If multi_select didn't fire, phase-2 would consume the comma string as one bad tag.)
-    let r = run_ask_tags(
-        &["type:expense", "food"],
-        &["type:expense,food", ""], // multi_select: both; phase-2: immediately done
-    );
+fn ask_tags_phase_2_accepts_space_separated_tags() {
+    let vocab = &["type:expense"];
+    let r = run_ask_tags(vocab, &[
+        "type:expense",  // phase 1
+        "food coffee",   // phase 2: two new tags in one input
+    ]);
     let tags = r.tags.unwrap();
-    assert!(tags.contains(&Tag::KeyValue("type".to_string(), "expense".to_string())));
     assert!(tags.contains(&Tag::Plain("food".to_string())));
-    assert!(r.stderr.is_empty());
+    assert!(tags.contains(&Tag::Plain("coffee".to_string())));
+}
+
+#[test]
+fn ask_tags_rejects_duplicate_plain_tag_in_phase_2() {
+    // "food" selected in phase 1; entering "food" again in phase 2 is silently skipped.
+    let vocab = &["type:expense", "food"];
+    let r = run_ask_tags(vocab, &[
+        "type:expense,food", // phase 1: both selected
+        "food",              // phase 2: duplicate — should be skipped with warning
+    ]);
+    let tags = r.tags.unwrap();
+    assert_eq!(tags.iter().filter(|t| **t == Tag::Plain("food".to_string())).count(), 1);
+    assert!(r.stderr.iter().any(|l| l.contains("Duplicate")));
+}
+
+#[test]
+fn ask_tags_rejects_duplicate_key_tag_in_phase_2() {
+    let vocab = &["type:expense", "type:asset"];
+    let r = run_ask_tags(vocab, &[
+        "type:expense",  // phase 1
+        "type:asset",    // phase 2: duplicate key — skipped with warning
+    ]);
+    let tags = r.tags.unwrap();
+    assert_eq!(tags.iter().filter(|t| matches!(t, Tag::KeyValue(k, _) if k == "type")).count(), 1);
+    assert!(r.stderr.iter().any(|l| l.contains("Duplicate")));
 }
 
 #[test]
 fn ask_tags_returns_none_on_cancellation() {
     // Empty answer queue → prompt returns None → ask_tags propagates it
-    let r = run_ask_tags(&[], &[]);
+    let r = run_ask_tags(&["type:expense"], &[]);
     assert!(r.tags.is_none());
 }
 
@@ -213,17 +224,17 @@ fn run_new(answers: impl IntoIterator<Item = &'static str>) -> RunResult {
     RunResult { exit_code, stdout: stdout.all(), stderr: stderr.all(), appended }
 }
 
-// Minimal two-posting answer sequence. Vocabulary is always non-empty (defaults),
-// so every posting needs a multi_select answer even for a new file.
+// Minimal two-posting answer sequence.
+// Per posting: phase-1 multi_select (must include type:), phase-2 text (space-separated new tags).
 const SIMPLE_EXPENSE: &[&str] = &[
-    "2026-04-06",         // date_select
-    "",                   // multi_select posting 1 (nothing pre-selected)
-    "food", "type:expense", "",  // tags for posting 1
-    "45.00",              // amount
-    "",                   // multi_select posting 2
-    "checking", "type:asset", "",  // tags for posting 2
-    "",                   // amount: accept default -45.00
-    "n",                  // no more postings
+    "2026-04-06",    // date_select
+    "type:expense",  // phase 1 posting 1: select type tag
+    "food",          // phase 2 posting 1: additional tags
+    "45.00",         // amount
+    "type:asset",    // phase 1 posting 2
+    "checking",      // phase 2 posting 2
+    "",              // amount: accept default -45.00
+    "n",             // no more postings
 ];
 
 const EXISTING_FILE: &str =
@@ -234,12 +245,12 @@ fn smoke_records_two_transactions_in_one_session() {
     let r = run_new([
         // Transaction 1
         "2026-04-06",
-        "",  "food", "type:expense", "", "45.00",
-        "",  "checking", "type:asset", "", "", "n",
+        "type:expense", "food", "45.00",
+        "type:asset", "checking", "", "n",
         // Transaction 2
         "2026-04-07",
-        "",  "coffee", "type:expense", "", "3.50",
-        "",  "checking", "type:asset", "", "", "n",
+        "type:expense", "coffee", "3.50",
+        "type:asset", "checking", "", "n",
         // Ctrl-D at date prompt (queue exhausted)
     ]);
     assert_eq!(r.exit_code, 0);
@@ -277,7 +288,7 @@ fn smoke_saves_balanced_transaction() {
 
 #[test]
 fn smoke_uses_default_date() {
-    let r = run_new(["", "", "food", "type:expense", "", "45.00", "", "checking", "type:asset", "", "", "n"]);
+    let r = run_new(["", "type:expense", "food", "45.00", "type:asset", "checking", "", "n"]);
     assert_eq!(r.exit_code, 0);
     assert!(r.appended.contains("2026-04-06"));
 }

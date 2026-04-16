@@ -188,6 +188,18 @@ mod prompt {
     }
 
     #[test]
+    fn null_text_returns_provided_answer() {
+        let p = Prompt::create_null(["hello world"]);
+        assert_eq!(p.text("Input"), Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn null_text_returns_none_when_queue_empty() {
+        let p = Prompt::create_null(std::iter::empty::<&str>());
+        assert_eq!(p.text("Input"), None);
+    }
+
+    #[test]
     fn null_text_with_completions_returns_provided_answer() {
         let p = Prompt::create_null(["type:expense"]);
         let opts = vec!["type:expense".to_string(), "type:asset".to_string()];

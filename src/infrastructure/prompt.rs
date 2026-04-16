@@ -51,6 +51,14 @@ impl Prompt {
         }
     }
 
+    /// Plain text input. Returns None if the user cancelled.
+    pub fn text(&self, message: &str) -> Option<String> {
+        match &self.0 {
+            Inner::Real => inquire::Text::new(message).prompt().ok(),
+            Inner::Null(q) => q.lock().unwrap().pop_front(),
+        }
+    }
+
     /// Text input with autocomplete suggestions shown as the user types.
     /// Returns None if the user cancelled.
     pub fn text_with_completions(&self, message: &str, completions: &[String]) -> Option<String> {
