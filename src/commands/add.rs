@@ -88,7 +88,7 @@ fn ask_postings(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
     Some(postings)
 }
 
-fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Option<Vec<Tag>> {
+pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Option<Vec<Tag>> {
     let mut tags: Vec<Tag> = Vec::new();
     let mut seen_plain: HashSet<String> = HashSet::new();
     let mut seen_keys: HashSet<String> = HashSet::new();
@@ -177,7 +177,7 @@ fn parse_tag(s: &str) -> Result<Tag, ParseError> {
     }
 }
 
-fn tag_vocabulary(ledger: &Ledger) -> Vec<String> {
+pub fn tag_vocabulary(ledger: &Ledger) -> Vec<String> {
     use std::collections::BTreeSet;
     let mut tags: BTreeSet<String> = BTreeSet::new();
     for tx in &ledger.transactions {
