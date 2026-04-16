@@ -16,15 +16,11 @@ pub fn run(path: &str, clock: &Clock, fs: &Filesystem, prompt: &Prompt, output: 
         }
     };
 
-    let vocabulary = if existing_content.is_empty() {
-        vec![]
-    } else {
-        match parser::parse(&existing_content) {
-            Ok(ledger) => tag_vocabulary(&ledger),
-            Err(e) => {
-                output.eprintln(&format!("Error parsing {path}: {e}"));
-                return 1;
-            }
+    let vocabulary = match parser::parse(&existing_content) {
+        Ok(ledger) => tag_vocabulary(&ledger),
+        Err(e) => {
+            output.eprintln(&format!("Error parsing {path}: {e}"));
+            return 1;
         }
     };
 
@@ -177,9 +173,15 @@ fn parse_tag(s: &str) -> Result<Tag, ParseError> {
     }
 }
 
+fn default_type_tags() -> impl Iterator<Item = String> {
+    ["type:asset", "type:equity", "type:expense", "type:income", "type:liability"]
+        .into_iter()
+        .map(String::from)
+}
+
 pub fn tag_vocabulary(ledger: &Ledger) -> Vec<String> {
     use std::collections::BTreeSet;
-    let mut tags: BTreeSet<String> = BTreeSet::new();
+    let mut tags: BTreeSet<String> = default_type_tags().collect();
     for tx in &ledger.transactions {
         for posting in &tx.postings {
             for tag in &posting.tags {
