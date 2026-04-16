@@ -1,7 +1,13 @@
 use chrono::NaiveDate;
+use inquire::list_option::ListOption;
+use inquire::validator::{MultiOptionValidator, Validation};
 use rust_decimal::Decimal;
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+/// Validator for multi-select prompts. Returns `None` for valid, or `Some(error)`.
+/// The null Prompt ignores validators — tests drive answers via the queue.
+pub type MultiSelectValidator = Arc<dyn Fn(&[&str]) -> Option<String> + Send + Sync>;
 
 pub struct Prompt(Inner);
 
@@ -35,25 +41,22 @@ impl Prompt {
     }
 
     /// Multi-select from a list of options. Returns selected items.
-    /// `preselected` items are shown as already checked (by value match against options).
+    /// An optional validator is applied in the real prompt (re-prompts on failure).
     /// In null mode, a single answer encodes selections as a comma-separated string;
-    /// empty string means no selections.
+    /// empty string means no selections. The validator is ignored in null mode.
     pub fn multi_select(
         &self,
         message: &str,
         options: &[String],
-        preselected: &[String],
+        validator: Option<MultiSelectValidator>,
     ) -> Option<Vec<String>> {
         match &self.0 {
             Inner::Real => {
-                let defaults: Vec<usize> = preselected
-                    .iter()
-                    .filter_map(|s| options.iter().position(|o| o == s))
-                    .collect();
-                inquire::MultiSelect::new(message, options.to_vec())
-                    .with_default(&defaults)
-                    .prompt()
-                    .ok()
+                let mut ms = inquire::MultiSelect::new(message, options.to_vec());
+                if let Some(v) = validator {
+                    ms = ms.with_validator(ArcMultiValidator(v));
+                }
+                ms.prompt().ok()
             }
             Inner::Null(q) => {
                 let answer = q.lock().unwrap().pop_front()?;
@@ -120,6 +123,20 @@ impl Prompt {
                 let answer = q.lock().unwrap().pop_front()?;
                 Some(matches!(answer.to_lowercase().as_str(), "y" | "yes" | "true"))
             }
+        }
+    }
+}
+
+/// Adapts a [`MultiSelectValidator`] closure for use with inquire.
+#[derive(Clone)]
+struct ArcMultiValidator(MultiSelectValidator);
+
+impl MultiOptionValidator<String> for ArcMultiValidator {
+    fn validate(&self, input: &[ListOption<&String>]) -> Result<Validation, inquire::CustomUserError> {
+        let values: Vec<&str> = input.iter().map(|o| o.value.as_str()).collect();
+        match (self.0)(&values) {
+            None => Ok(Validation::Valid),
+            Some(msg) => Ok(Validation::Invalid(msg.into())),
         }
     }
 }

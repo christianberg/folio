@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use folio::commands::add::ask_tags;
+use folio::commands::add::{ask_tags, type_tag_validator};
 use folio::infrastructure::{Clock, Filesystem, Output, Prompt};
 use folio::Tag;
 
@@ -88,9 +88,27 @@ mod vocabulary {
     }
 }
 
+// ── type_tag_validator (pure function) ────────────────────────────────────────
+
+#[test]
+fn type_tag_validator_accepts_selection_with_type_tag() {
+    assert_eq!(type_tag_validator(&["food", "type:expense"]), None);
+}
+
+#[test]
+fn type_tag_validator_rejects_selection_without_type_tag() {
+    assert!(type_tag_validator(&["food", "checking"]).is_some());
+}
+
+#[test]
+fn type_tag_validator_rejects_empty_selection() {
+    assert!(type_tag_validator(&[]).is_some());
+}
+
 // ── Tag entry (ask_tags) ──────────────────────────────────────────────────────
 // Tests for tag validation and collection, called directly — no date or amount
 // answers needed.
+// Phase 1: multi_select answer (comma-separated). Phase 2: single text answer.
 
 struct TagsResult {
     tags: Option<Vec<Tag>>,
@@ -110,17 +128,15 @@ fn run_ask_tags(vocabulary: &[&str], answers: &[&str]) -> TagsResult {
 // Phase 2: single text answer — space-separated new tags (or "" for none).
 
 #[test]
-fn ask_tags_requires_type_tag_in_phase_1() {
-    // Selecting no type tag re-prompts phase 1; previously selected tags are kept.
+fn ask_tags_phase_1_collects_selected_tags() {
+    // The type: requirement is enforced by inquire's validator in real mode;
+    // in null mode we just supply a valid answer directly.
     let vocab = &["type:expense", "type:asset", "food"];
     let r = run_ask_tags(vocab, &[
-        "food",           // phase 1, attempt 1: no type → error, but food is kept
-        "type:expense",   // phase 1, attempt 2: type selected
-        "",               // phase 2: no additional tags
+        "type:expense,food", // phase 1: both selected
+        "",                  // phase 2: no additional tags
     ]);
     let tags = r.tags.unwrap();
-    assert!(r.stderr.iter().any(|l| l.contains("type:")));
-    // Both tags from both attempts should be present
     assert!(tags.contains(&Tag::Plain("food".to_string())));
     assert!(tags.contains(&Tag::KeyValue("type".to_string(), "expense".to_string())));
 }

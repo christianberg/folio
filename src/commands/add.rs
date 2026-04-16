@@ -1,7 +1,8 @@
 use rust_decimal::Decimal;
 use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::infrastructure::{Clock, Filesystem, Output, Prompt};
+use crate::infrastructure::{Clock, Filesystem, MultiSelectValidator, Output, Prompt};
 use crate::serialiser;
 use crate::types::{Ledger, Posting, Tag, Transaction};
 use crate::{parser, ParseError};
@@ -92,36 +93,17 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
     let mut seen_plain: HashSet<String> = HashSet::new();
     let mut seen_keys: HashSet<String> = HashSet::new();
 
-    // Phase 1: multi-select — loop until a type: tag is selected
-    let mut preselected: Vec<String> = Vec::new();
-    loop {
-        let selected = prompt.multi_select("  Tags (select existing)", vocabulary, &preselected)?;
-        for s in &selected {
-            match parse_tag(s) {
-                Ok(tag) => {
-                    let is_dup = match &tag {
-                        Tag::Plain(name) => !seen_plain.insert(name.clone()),
-                        Tag::KeyValue(key, _) => !seen_keys.insert(key.clone()),
-                    };
-                    if !is_dup {
-                        tags.push(tag);
-                    }
-                }
-                Err(_) => {}
+    // Phase 1: multi-select — validator enforces that a type: tag is chosen
+    let validator: MultiSelectValidator = Arc::new(type_tag_validator);
+    let selected = prompt.multi_select("  Tags (select existing)", vocabulary, Some(validator))?;
+    for s in &selected {
+        if let Ok(tag) = parse_tag(s) {
+            match &tag {
+                Tag::Plain(name) => { seen_plain.insert(name.clone()); }
+                Tag::KeyValue(key, _) => { seen_keys.insert(key.clone()); }
             }
+            tags.push(tag);
         }
-        let has_type = tags.iter().any(|t| matches!(t, Tag::KeyValue(k, _) if k == "type"));
-        if has_type {
-            break;
-        }
-        output.eprintln(
-            "  A type: tag is required \
-             (type:asset, type:liability, type:equity, type:income, or type:expense)",
-        );
-        preselected = tags.iter().map(|t| match t {
-            Tag::Plain(s) => s.clone(),
-            Tag::KeyValue(k, v) => format!("{k}:{v}"),
-        }).collect();
     }
 
     // Phase 2: single text input — space-separated new tags
@@ -145,6 +127,20 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
         tags.push(tag);
     }
     Some(tags)
+}
+
+/// Validator for the phase-1 multi-select: requires at least one `type:` tag.
+/// Returns `None` (valid) or `Some(error message)`.
+pub fn type_tag_validator(selections: &[&str]) -> Option<String> {
+    if selections.iter().any(|s| s.starts_with("type:")) {
+        None
+    } else {
+        Some(
+            "A type: tag is required \
+             (type:asset, type:liability, type:equity, type:income, or type:expense)"
+                .to_string(),
+        )
+    }
 }
 
 fn parse_tag(s: &str) -> Result<Tag, ParseError> {
