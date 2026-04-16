@@ -35,11 +35,26 @@ impl Prompt {
     }
 
     /// Multi-select from a list of options. Returns selected items.
+    /// `preselected` items are shown as already checked (by value match against options).
     /// In null mode, a single answer encodes selections as a comma-separated string;
     /// empty string means no selections.
-    pub fn multi_select(&self, message: &str, options: &[String]) -> Option<Vec<String>> {
+    pub fn multi_select(
+        &self,
+        message: &str,
+        options: &[String],
+        preselected: &[String],
+    ) -> Option<Vec<String>> {
         match &self.0 {
-            Inner::Real => inquire::MultiSelect::new(message, options.to_vec()).prompt().ok(),
+            Inner::Real => {
+                let defaults: Vec<usize> = preselected
+                    .iter()
+                    .filter_map(|s| options.iter().position(|o| o == s))
+                    .collect();
+                inquire::MultiSelect::new(message, options.to_vec())
+                    .with_default(&defaults)
+                    .prompt()
+                    .ok()
+            }
             Inner::Null(q) => {
                 let answer = q.lock().unwrap().pop_front()?;
                 if answer.is_empty() {

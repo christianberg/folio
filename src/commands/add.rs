@@ -93,8 +93,9 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
     let mut seen_keys: HashSet<String> = HashSet::new();
 
     // Phase 1: multi-select — loop until a type: tag is selected
+    let mut preselected: Vec<String> = Vec::new();
     loop {
-        let selected = prompt.multi_select("  Tags (select existing)", vocabulary)?;
+        let selected = prompt.multi_select("  Tags (select existing)", vocabulary, &preselected)?;
         for s in &selected {
             match parse_tag(s) {
                 Ok(tag) => {
@@ -117,6 +118,10 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
             "  A type: tag is required \
              (type:asset, type:liability, type:equity, type:income, or type:expense)",
         );
+        preselected = tags.iter().map(|t| match t {
+            Tag::Plain(s) => s.clone(),
+            Tag::KeyValue(k, v) => format!("{k}:{v}"),
+        }).collect();
     }
 
     // Phase 2: single text input — space-separated new tags
