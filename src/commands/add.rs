@@ -98,11 +98,13 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
         for s in &selected {
             match parse_tag(s) {
                 Ok(tag) => {
-                    match &tag {
-                        Tag::Plain(name) => { seen_plain.insert(name.clone()); }
-                        Tag::KeyValue(key, _) => { seen_keys.insert(key.clone()); }
+                    let is_dup = match &tag {
+                        Tag::Plain(name) => !seen_plain.insert(name.clone()),
+                        Tag::KeyValue(key, _) => !seen_keys.insert(key.clone()),
+                    };
+                    if !is_dup {
+                        tags.push(tag);
                     }
-                    tags.push(tag);
                 }
                 Err(_) => {}
             }
@@ -115,9 +117,6 @@ pub fn ask_tags(vocabulary: &[String], prompt: &Prompt, output: &Output) -> Opti
             "  A type: tag is required \
              (type:asset, type:liability, type:equity, type:income, or type:expense)",
         );
-        tags.clear();
-        seen_plain.clear();
-        seen_keys.clear();
     }
 
     // Phase 2: single text input — space-separated new tags
